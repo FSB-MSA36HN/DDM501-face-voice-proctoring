@@ -14,7 +14,14 @@ import numpy as np
 import pandas as pd
 from mlflow import MlflowClient
 from mlflow.models import infer_signature
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
+
+if __package__:
+    from .data_snapshot import extract, read_snapshot
+    from .validate_data import validate
+else:
+    from data_snapshot import extract, read_snapshot
+    from validate_data import validate
 
 
 def cosine(a, b) -> float:
@@ -43,11 +50,39 @@ def choose_threshold(positive: np.ndarray, negative: np.ndarray) -> tuple[float,
     for threshold in np.linspace(-0.2, 0.95, 1151):
         far = float(np.mean(negative >= threshold))
         frr = float(np.mean(positive < threshold))
-        objective = (far + frr) / 2
+        objective = (max(far, frr), (far + frr) / 2)
         if best is None or objective < best[0]:
             best = (objective, float(threshold), far, frr)
     _, threshold, far, frr = best
     return threshold, {"far": far, "frr": frr, "positive_pairs": len(positive), "negative_pairs": len(negative)}
+
+
+def cross_validate(positive: np.ndarray, negative: np.ndarray, folds: int = 5) -> dict[str, float]:
+    """Deterministic stratified CV for threshold stability and out-of-fold error."""
+    if min(len(positive), len(negative)) < 10:
+        return {}
+    rng = np.random.default_rng(501)
+    positive, negative = rng.permutation(positive), rng.permutation(negative)
+    results, far_results, frr_results = [], [], []
+    positive_folds = np.array_split(np.arange(len(positive)), folds)
+    negative_folds = np.array_split(np.arange(len(negative)), folds)
+    for positive_index, negative_index in zip(positive_folds, negative_folds):
+        positive_test, negative_test = positive[positive_index], negative[negative_index]
+        positive_train = np.delete(positive, positive_index)
+        negative_train = np.delete(negative, negative_index)
+        threshold, _ = choose_threshold(positive_train, negative_train)
+        far = float(np.mean(negative_test >= threshold))
+        frr = float(np.mean(positive_test < threshold))
+        results.append((far + frr) / 2)
+        far_results.append(far)
+        frr_results.append(frr)
+    return {
+        "cv_balanced_error_mean": float(np.mean(results)),
+        "cv_balanced_error_std": float(np.std(results)),
+        "cv_folds": float(folds),
+        "cv_far": float(np.mean(far_results)),
+        "cv_frr": float(np.mean(frr_results)),
+    }
 
 
 class RiskBundle(mlflow.pyfunc.PythonModel):
@@ -68,9 +103,15 @@ def main() -> None:
     database_url = os.getenv("DATABASE_URL", "sqlite:///./data/biometric.db")
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:15020")
     model_name = os.getenv("MLFLOW_MODEL_NAME", "face-voice-risk-bundle")
-    engine = create_engine(database_url)
-    with engine.connect() as connection:
-        raw = connection.execute(text("SELECT person_id, modality, embedding FROM biometric_samples")).mappings().all()
+    if os.getenv("SNAPSHOT_PATH"):
+        snapshot = read_snapshot(os.environ["SNAPSHOT_PATH"])
+    else:
+        engine = create_engine(database_url)
+        with engine.connect() as connection:
+            snapshot = extract(connection)
+        engine.dispose()
+    raw = snapshot["samples"]
+    quality = validate(raw)
     grouped = {"face": [], "voice": []}
     for row in raw:
         embedding = row["embedding"]
@@ -81,6 +122,7 @@ def main() -> None:
     for modality in ("face", "voice"):
         positive, negative = pairs(grouped[modality])
         threshold, result = choose_threshold(positive, negative)
+        result.update(cross_validate(positive, negative))
         thresholds[f"{modality}_threshold"] = threshold
         metrics.update({f"{modality}_{key}": value for key, value in result.items()})
     mlflow.set_tracking_uri(tracking_uri)
@@ -90,31 +132,39 @@ def main() -> None:
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(thresholds, handle, indent=2)
         with mlflow.start_run() as run:
-            mlflow.log_params({"dataset": "enrolled-samples", "modalities": "face,voice"})
+            mlflow.log_params({
+                "dataset": "enrolled-samples", "modalities": "face,voice",
+                "dataset_version": snapshot["dataset_version"],
+                "dataset_samples": len(raw),
+                "training_tenant_scope": snapshot.get("tenant_scope", "demo"),
+                "threshold_grid_min": -0.2, "threshold_grid_max": 0.95,
+                "threshold_grid_steps": 1151, "objective": "minimize_worst_far_frr",
+            })
             mlflow.log_metrics(metrics)
+            mlflow.log_dict(snapshot, "data/snapshot.json")
+            mlflow.log_dict(quality, "data/validation.json")
+            mlflow.log_artifact(path, artifact_path="evaluation")
             input_example = pd.DataFrame({"face_score": [0.8], "voice_score": [0.7]})
-            model_info = mlflow.pyfunc.log_model(
+            mlflow.pyfunc.log_model(
                 artifact_path="bundle", python_model=RiskBundle(), artifacts={"thresholds": path},
                 registered_model_name=model_name,
                 input_example=input_example,
                 signature=infer_signature(input_example, np.asarray([0], dtype=int)),
             )
-            mlflow.set_tags({"purpose": "threshold-calibration", "run_id": run.info.run_id})
+            mlflow.set_tags({
+                "purpose": "threshold-calibration", "run_id": run.info.run_id,
+                "data_stage": "validated", "model_family": "cosine-threshold-policy",
+            })
     client = MlflowClient()
     versions = client.search_model_versions(f"name='{model_name}'")
-    version = max(versions, key=lambda item: int(item.version))
+    version = max((item for item in versions if item.run_id == run.info.run_id), key=lambda item: int(item.version))
     for _ in range(30):
         version = client.get_model_version(model_name, version.version)
         if version.status == "READY":
             break
         time.sleep(1)
     client.set_registered_model_alias(model_name, "candidate", version.version)
-    try:
-        client.get_model_version_by_alias(model_name, "champion")
-        champion_exists = True
-    except Exception:
-        champion_exists = False
-    if args.promote or not champion_exists:
+    if args.promote:
         client.set_registered_model_alias(model_name, "champion", version.version)
     print(json.dumps({"model": model_name, "version": version.version, "thresholds": thresholds, "metrics": metrics}, indent=2))
 

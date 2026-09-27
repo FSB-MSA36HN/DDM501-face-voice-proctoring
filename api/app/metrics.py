@@ -5,4 +5,4 @@ VERIFY = Counter("biometric_verifications_total", "Verification decisions", ["de
 LATENCY = Histogram("biometric_verification_seconds", "Verification latency")
 PEOPLE = Gauge("biometric_people_total", "Enrolled people")
 MODEL_INFO = Gauge("biometric_model_info", "Loaded model metadata", ["version", "backend"])
-
+FEEDBACK = Counter("biometric_feedback_total", "Human review labels", ["label"])

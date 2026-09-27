@@ -161,7 +161,10 @@ class BiometricEngine:
                 local_source = self.model_dir / "speechbrain-ecapa"
                 if not (local_source / "hyperparams.yaml").exists():
                     raise BiometricError("Thiếu weights ECAPA; chạy `python pipeline/download_models.py`")
-                self._speaker = EncoderClassifier.from_hparams(source=str(local_source), run_opts={"device": "cpu"})
+                self._speaker = EncoderClassifier.from_hparams(
+                    source=str(local_source), run_opts={"device": "cpu"},
+                    overrides={"pretrained_path": str(local_source.resolve())},
+                )
             import torch
 
             with torch.inference_mode():

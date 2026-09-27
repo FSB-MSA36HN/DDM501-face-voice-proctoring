@@ -1,4 +1,16 @@
-# DDM501 — Face + Voice Integrity MVP
+# DDM501 — Face + Voice Verification SaaS MVP
+
+## SaaS / private deployment checkpoint
+
+Project hiện có tenant isolation, API key theo vai trò, hosted verification session dùng một lần, consent, manual review, webhook ký HMAC có retry, audit và portal quản lý tập trung. Kiến trúc PaaS được giả lập bằng Docker local; chưa triển khai dịch vụ cloud thực tế.
+
+- Portal: http://localhost:18501 — nhập API key; platform xem quản trị/monitoring, tenant operator xem dữ liệu của tenant.
+- Hệ thống khách hàng giả lập: http://localhost:18600 — tạo phiên verify, chuyển sang hosted page, kiểm tra kết quả backend rồi mới cho vào bài thi.
+- Hosted page được mở bằng link phiên tạo từ portal/API; không mở `/verify` riêng lẻ.
+- Webhook worker metrics: http://localhost:18002/metrics.
+- [Hợp đồng tích hợp](SAAS_INTEGRATION.md), [triển khai PaaS/private](DEPLOYMENT.md), [đối chiếu tiêu chí](RUBRIC_MAPPING.md), [kịch bản thuyết trình](DEMO_PRESENTATION.md), [trạng thái tiếp tục](PROJECT_STATE.md).
+
+Sau khi stack healthy và có dữ liệu bootstrap, chạy `python pipeline/provision_local_saas.py` để tạo tenant demo và ghi credential vào `data/local-saas.json` (bí mật, không commit). Chạy `python pipeline/verify_saas.py` để kiểm chứng tích hợp bằng ảnh/WAV thật. Hướng dẫn bootstrap và giới hạn xác thực nằm trong tài liệu tích hợp. Không dùng tài khoản/mật khẩu demo khi public hệ thống.
 
 Hệ thống demo nội bộ cho bài toán xác minh danh tính 1:1 trong kỳ thi tiếng Anh online. Project nối các phần đã học thành một luồng hoàn chỉnh: ingest/ghi danh → embedding → xác minh → Airflow → MLflow Registry → serving API → Prometheus/Grafana.
 
@@ -15,6 +27,8 @@ Hệ thống demo nội bộ cho bài toán xác minh danh tính 1:1 trong kỳ 
 | MinIO | http://localhost:19101 | Artifact store; raw biometric mặc định tắt |
 | Prometheus | http://localhost:19090 | Metrics |
 | Grafana | http://localhost:13000 | Dashboard và review queue |
+| Alertmanager | http://localhost:19093 | Nhận và nhóm cảnh báo vận hành/ML |
+| Drift exporter | http://localhost:18001/metrics | PSI, performance từ feedback |
 | PostgreSQL | localhost:15433 | Metadata, enrollment, event |
 
 Tài khoản demo Airflow/Grafana là `admin` / `admin`. API key mặc định là `demo-internal-key`. Chỉ các cổng loopback được publish; hãy đổi toàn bộ secret trước khi đặt lên mạng.
@@ -88,12 +102,13 @@ Có thể đổi `--identities 100`. Script pin immutable dataset SHA và sinh `
 
 DAG `biometric_model_pipeline` chạy mỗi Chủ nhật:
 
-1. snapshot số người/mẫu/event;
-2. tạo genuine/impostor pairs theo từng modality;
-3. chọn threshold giảm trung bình FAR và FRR;
-4. log metrics + threshold bundle vào MLflow;
-5. gán alias `candidate`; version đầu tiên tự thành `champion`;
-6. yêu cầu API reload alias `champion`.
+1. ingest snapshot có timestamp để truy vết;
+2. kiểm tra schema, quality, duplicate, dimension và số lượng dữ liệu;
+3. feature engineering tạo genuine/impostor pairs và tìm threshold;
+4. log params, metrics, tags, artifact, signature và model vào MLflow;
+5. đăng ký alias `candidate`, kiểm tra FAR/FRR và số pairs;
+6. chỉ khi qua gate mới chuyển alias `champion`;
+7. sinh Responsible AI audit rồi hot-reload API.
 
 Chạy ngay ngoài lịch:
 
@@ -105,7 +120,8 @@ docker compose exec airflow-scheduler airflow dags trigger biometric_model_pipel
 Muốn promote candidate sau khi review metrics:
 
 ```powershell
-docker compose exec airflow-scheduler python /opt/project/pipeline/calibrate_and_register.py --promote
+docker compose exec airflow-scheduler python /opt/project/pipeline/calibrate_and_register.py
+docker compose exec airflow-scheduler python /opt/project/pipeline/promotion_gate.py
 Invoke-RestMethod -Method Post -Headers @{'X-API-Key'='demo-internal-key'} http://localhost:18100/v1/admin/reload-model
 ```
 
@@ -118,6 +134,8 @@ API luôn ghi `model_version` vào verification event để truy vết. Nếu ML
 - `POST /v1/people/{id}/enroll` — multipart `face_files` / `voice_files`.
 - `POST /v1/verify` — multipart `person_id`, `session_id`, `face_file`, `voice_file`.
 - `GET /v1/events` — audit/review queue.
+- `PUT /v1/events/{id}/feedback` — nhãn ground truth từ proctor để theo dõi performance.
+- `POST /v1/simulation/observations` — chỉ dành cho demo drift và phải bật `ENABLE_SIMULATION`.
 - `POST /v1/admin/reload-model` — tải `models:/face-voice-risk-bundle@champion`.
 - `GET /metrics/` — Prometheus exposition.
 
@@ -142,6 +160,54 @@ pytest -q
 python -m compileall api pipeline airflow/dags ui
 docker compose config --quiet
 ```
+
+CI tại `.github/workflows/ci.yml` chạy Ruff, compile, unit/data/model tests, kiểm tra core coverage >80%, validate Compose và build các container. Bốn nhóm test gồm embedding unit, decision policy, data-quality/model-promotion gate và PSI/window monitoring.
+
+## Demo monitoring, drift và feedback
+
+Sau khi stack healthy, chạy simulation qua chính REST API (không ghi thẳng database):
+
+```powershell
+python pipeline\simulate_drift.py --samples 120
+docker compose restart drift-monitor
+```
+
+Simulation tạo một cửa sổ ổn định rồi một cửa sổ bị shift. Sau tối đa 60 giây:
+
+- Grafana hiển thị PSI từng feature, tỷ lệ feature drift và accuracy có feedback;
+- Prometheus firing alert `BiometricDataDrift` khi PSI > 0.2 trong 2 phút;
+- Evidently report ở `reports/data-drift.html` và summary JSON cùng thư mục;
+- Alertmanager nhận alert tại cổng 19093. Cấu hình mặc định chỉ giữ/hiển thị alert; production cần thêm webhook/email/Slack bằng secret.
+
+Gắn nhãn một event đã review:
+
+```powershell
+$headers = @{'X-API-Key'='demo-internal-key'}
+$body = @{is_genuine=$true; reviewer='proctor-01'; notes='manual review'} | ConvertTo-Json
+Invoke-RestMethod -Method Put -Headers $headers -ContentType 'application/json' -Body $body http://localhost:18100/v1/events/EVENT_ID/feedback
+```
+
+## Tài liệu nộp bài
+
+- `PROJECT_REQUIREMENTS.md`: problem, use cases, functional/non-functional requirements và metrics có target.
+- `ARCHITECTURE.md`: component/data flow, failure modes, tech justification và trade-offs.
+- `RESPONSIBLE_AI.md`: fairness proxy, explainability, privacy và ethics/mitigation.
+- `RUBRIC_MAPPING.md`: ánh xạ từng tiêu chí chấm điểm tới evidence trong repo.
+- `CONTRIBUTING.md`: branching, quality gate và phân công vai trò cần điền tên thật.
+
+Swagger/OpenAPI luôn có tại `/docs` và `/openapi.json`.
+
+## Evidently performance và auto-deploy
+
+Xem [hướng dẫn vận hành](OPERATIONS.md) để cấu hình feedback windows, xem báo cáo model performance, và thiết lập GitHub Actions self-hosted runner tự deploy sau khi CI trên `main` thành công.
+
+## Troubleshooting
+
+- `candidate rejected`: mở MLflow run, xem FAR/FRR hoặc bổ sung đủ >=5 genuine/impostor pairs mỗi modality; champion cũ không bị thay.
+- Drift monitor báo `need at least 200 events`: chạy simulation hoặc chờ đủ hai cửa sổ; đổi `MONITOR_WINDOW_SIZE` cho demo nhỏ.
+- API 503 khi reload: kiểm tra MLflow/MinIO, alias `champion` và credentials; model đang chạy vẫn được giữ.
+- Build thiếu RAM/disk: lần đầu tải PyTorch + weights khá lớn; cấp Docker khoảng 8 GB RAM và 10 GB trống.
+- Grafana không có dữ liệu: kiểm tra Prometheus targets `/targets`, exporter `:18001/metrics`, rồi khoảng thời gian dashboard.
 
 ## Những gì đã có và chưa có
 

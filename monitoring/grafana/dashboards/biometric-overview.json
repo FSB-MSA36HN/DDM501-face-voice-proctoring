@@ -4,6 +4,31 @@
   "graphTooltip": 1,
   "panels": [
     {
+      "type": "timeseries", "title": "SaaS webhook delivery outcomes", "id": 11,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (outcome) (rate(biometric_webhook_attempts_total[5m]))", "legendFormat": "{{outcome}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35}
+    },
+    {
+      "type": "stat", "title": "SaaS webhook outbox", "id": 12,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "biometric_webhook_backlog", "legendFormat": "{{status}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35}
+    },
+    {
+      "type": "timeseries", "title": "Evidently model performance (reviewed events)", "id": 9,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "biometric_model_performance", "legendFormat": "{{metric}} / {{window}}"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
+      "gridPos": {"h": 9, "w": 18, "x": 0, "y": 26}
+    },
+    {
+      "type": "stat", "title": "Performance report ready (1 = ready)", "id": 10,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "biometric_performance_report_success"}],
+      "gridPos": {"h": 9, "w": 6, "x": 18, "y": 26}
+    },
+    {
       "type": "stat", "title": "Verification rate", "id": 1,
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [{"expr": "sum(rate(biometric_verifications_total[5m]))", "legendFormat": "requests/s"}],
@@ -35,6 +60,28 @@
       "datasource": {"type": "postgres", "uid": "biometric-postgres"},
       "targets": [{"format": "table", "rawSql": "SELECT created_at, session_id, person_id, risk_score, face_score, voice_score, reasons, model_version FROM verification_events WHERE accepted = false ORDER BY created_at DESC LIMIT 100", "refId": "A"}],
       "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "type": "timeseries", "title": "Production drift — PSI", "id": 6,
+      "description": "PSI <0.1 stable, 0.1–0.2 investigate, >0.2 alert",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.2}]}}},
+      "targets": [{"expr": "biometric_feature_psi", "legendFormat": "{{feature}}"}],
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 17}
+    },
+    {
+      "type": "stat", "title": "Human-reviewed accuracy", "id": 7,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "biometric_feedback_accuracy", "legendFormat": "accuracy"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
+      "gridPos": {"h": 9, "w": 6, "x": 12, "y": 17}
+    },
+    {
+      "type": "stat", "title": "Drifted feature share", "id": 8,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "biometric_drifted_feature_share", "legendFormat": "drifted"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
+      "gridPos": {"h": 9, "w": 6, "x": 18, "y": 17}
     }
   ],
   "refresh": "15s",
@@ -47,4 +94,3 @@
   "uid": "biometric-overview",
   "version": 1
 }
-

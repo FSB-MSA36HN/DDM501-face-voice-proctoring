@@ -1,0 +1,77 @@
+name: CI
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy on the approved self-hosted demo runner
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11", cache: pip}
+      - run: pip install -r requirements-api.txt -r requirements-monitoring.txt pytest pytest-cov ruff
+      - run: ruff check api pipeline monitoring tests legacy_demo
+      - run: python -m compileall -q api pipeline monitoring airflow/dags ui legacy_demo
+      - run: python -m pytest --cov=app.auth --cov=app.saas --cov=app.webhooks --cov=app.migrations --cov=app.biometrics --cov=app.decision --cov=pipeline.validate_data --cov=pipeline.promotion_gate --cov=monitoring.drift_monitor --cov-report=term-missing --cov-fail-under=80
+      - run: cp .env.example .env && docker compose config --quiet
+
+  containers:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build api ui drift-monitor airflow-scheduler webhook-worker legacy-demo
+
+  deploy-demo:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
+    runs-on: [self-hosted, linux, ddm501-demo]
+    needs: containers
+    environment: demo
+    concurrency:
+      group: ddm501-demo
+      cancel-in-progress: false
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Configure secrets
+        env:
+          DEPLOY_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DEPLOY_API_KEY: ${{ secrets.API_KEY }}
+        shell: bash
+        run: python pipeline/prepare_deploy_env.py
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build
+      - name: Smoke test
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            curl --fail http://localhost:18100/health && exit 0
+            sleep 10
+          done
+          docker compose ps
+          exit 1
+      - name: Monitoring smoke test
+        shell: bash
+        run: |
+          curl --fail --retry 12 --retry-delay 5 --retry-all-errors http://localhost:18001/metrics
+          curl --fail http://localhost:19090/-/ready
+          curl --fail http://localhost:13000/api/health

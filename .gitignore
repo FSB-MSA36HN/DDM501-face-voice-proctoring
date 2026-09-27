@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -9,7 +11,9 @@ data/*
 models/*
 !models/.gitkeep
 airflow/logs/
+reports/
+.coverage
+htmlcov/
 postgres-data/
 minio-data/
 mlflow-data/
-
