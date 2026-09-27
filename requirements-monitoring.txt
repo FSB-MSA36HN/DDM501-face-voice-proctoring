@@ -1,0 +1,6 @@
+evidently==0.4.40
+numpy==1.26.4
+pandas==2.2.3
+prometheus-client==0.22.0
+sqlalchemy==2.0.41
+psycopg[binary]==3.2.9

@@ -27,7 +27,7 @@ class RegistryLoader:
         client = MlflowClient()
         version = client.get_model_version_by_alias(self.settings.mlflow_model_name, self.settings.mlflow_model_alias)
         local_root = mlflow.artifacts.download_artifacts(
-            artifact_uri=f"models:/{self.settings.mlflow_model_name}@{self.settings.mlflow_model_alias}"
+            artifact_uri=f"models:/{self.settings.mlflow_model_name}/{version.version}"
         )
         candidates = list(__import__("pathlib").Path(local_root).rglob("thresholds.json"))
         if not candidates:

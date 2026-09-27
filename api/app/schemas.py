@@ -44,3 +44,17 @@ class VerificationOut(BaseModel):
     model_version: str
     latency_ms: int
 
+
+class SimulationIn(BaseModel):
+    person_id: str
+    session_id: str = Field(min_length=1, max_length=100)
+    face_score: float = Field(ge=-1, le=1)
+    voice_score: float = Field(ge=-1, le=1)
+    face_quality: float = Field(default=0.8, ge=0, le=1)
+    voice_quality: float = Field(default=0.8, ge=0, le=1)
+
+
+class FeedbackIn(BaseModel):
+    is_genuine: bool
+    reviewer: str = Field(min_length=1, max_length=100)
+    notes: str | None = Field(default=None, max_length=1000)

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 12
     min_face_samples: int = 2
     min_voice_samples: int = 2
+    enable_simulation: bool = False
     store_raw_biometrics: bool = False
     biometric_bucket: str = "biometric-samples"
     mlflow_tracking_uri: str = "http://localhost:15020"
@@ -26,9 +27,14 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     minio_endpoint: str = "http://minio:9000"
+    public_api_url: str = "http://localhost:18100"
+    webhook_master_key: str = ""
+    session_signing_key: str = ""
+    webhook_allowed_hosts: str = "legacy-demo,localhost,127.0.0.1"
+    allow_insecure_webhooks: bool = True
+    webhook_max_attempts: int = 5
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

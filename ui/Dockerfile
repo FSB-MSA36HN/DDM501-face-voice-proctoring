@@ -4,5 +4,6 @@ WORKDIR /ui
 COPY requirements-ui.txt .
 RUN pip install -r requirements-ui.txt
 COPY ui/app.py .
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /ui
+USER appuser
 CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
-

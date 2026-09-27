@@ -1,0 +1,52 @@
+groups:
+  - name: biometric-ml
+    rules:
+      - alert: WebhookDeliveryFailed
+        expr: biometric_webhook_backlog{status="failed"} > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Webhook delivery exhausted retries; inspect tenant outbox"
+      - alert: WebhookWorkerDown
+        expr: up{job="webhook-worker"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Webhook worker is unavailable"
+      - alert: BiometricPerformanceDegraded
+        expr: biometric_model_performance{metric="accuracy",window="current"} < 0.8 and on() biometric_performance_report_success == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Accuracy on the latest reviewed window is below 80%"
+      - alert: BiometricDataDrift
+        expr: max(biometric_feature_psi) > 0.2
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Biometric input drift detected"
+          description: "At least one production feature has PSI > 0.2 for 2 minutes."
+      - alert: BiometricHighReviewRate
+        expr: sum(rate(biometric_verifications_total{decision="review"}[10m])) / clamp_min(sum(rate(biometric_verifications_total[10m])), 0.001) > 0.35
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Review rate is above 35%"
+      - alert: BiometricHighLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(biometric_verification_seconds_bucket[5m]))) > 2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "p95 verification latency is above 2 seconds"
+      - alert: BiometricAPIDown
+        expr: up{job="biometric-api"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Biometric API is unavailable"
+      - alert: DriftMonitorStale
+        expr: time() - biometric_monitor_last_success_unixtime > 300
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Drift monitor has not completed for five minutes"

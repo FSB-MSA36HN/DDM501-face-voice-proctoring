@@ -1,24 +1,27 @@
 from __future__ import annotations
 
 import time
-import uuid
+import logging
 from contextlib import asynccontextmanager
 
-import numpy as np
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from .biometrics import BiometricEngine, BiometricError, cosine
 from .config import get_settings
-from .db import Base, engine, get_db
-from .metrics import LATENCY, MODEL_INFO, PEOPLE, REQUESTS, VERIFY
-from .models import BiometricSample, Person, VerificationEvent
+from .db import engine, get_db
+from .auth import Principal, authenticate, audit, digest, get_person, operator, platform
+from .migrations import migrate
+from .decision import decide
+from .metrics import FEEDBACK, LATENCY, MODEL_INFO, PEOPLE, REQUESTS, VERIFY
+from .models import BiometricSample, Person, VerificationEvent, VerificationFeedback
 from .registry import RegistryLoader
-from .schemas import EnrollmentOut, PersonCreate, PersonOut, VerificationOut
+from .schemas import EnrollmentOut, FeedbackIn, PersonCreate, PersonOut, SimulationIn, VerificationOut
 from .storage import ObjectStore, sha256
 
 settings = get_settings()
@@ -29,7 +32,11 @@ registry = RegistryLoader(settings)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    migrate(engine)
+    try:
+        registry.load()
+    except Exception:
+        logging.getLogger(__name__).warning("Champion unavailable at startup; using configured defaults", exc_info=True)
     MODEL_INFO.labels(version=registry.current.version, backend=settings.model_backend).set(1)
     yield
 
@@ -38,9 +45,16 @@ app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.mount("/metrics", make_asgi_app())
 
 
-def require_key(x_api_key: str | None = Header(default=None)) -> None:
-    if x_api_key != settings.api_key:
-        raise HTTPException(status_code=401, detail="API key không hợp lệ")
+@app.middleware("http")
+async def observe_requests(request: Request, call_next):
+    response = await call_next(request)
+    route = request.scope.get("route")
+    route_name = getattr(route, "path", request.url.path)
+    REQUESTS.labels(route=route_name, status=str(response.status_code)).inc()
+    return response
+
+
+require_key = authenticate
 
 
 async def read_upload(upload: UploadFile, allowed: set[str]) -> bytes:
@@ -59,7 +73,7 @@ def person_out(person: Person) -> PersonOut:
     voice_count = sum(sample.modality == "voice" for sample in person.samples)
     return PersonOut(
         id=person.id,
-        external_id=person.external_id,
+        external_id=person.external_ref or person.external_id,
         display_name=person.display_name,
         active=person.active,
         created_at=person.created_at,
@@ -80,11 +94,22 @@ def health(db: Session = Depends(get_db)) -> dict:
     }
 
 
+@app.get("/ready")
+def ready(db: Session = Depends(get_db)) -> dict:
+    result = health(db)
+    if registry.current.version == "local-default":
+        raise HTTPException(503, "No registered champion loaded yet")
+    return result
+
+
 @app.post("/v1/people", response_model=PersonOut, status_code=201, dependencies=[Depends(require_key)])
-def create_person(body: PersonCreate, db: Session = Depends(get_db)) -> PersonOut:
-    person = Person(external_id=body.external_id, display_name=body.display_name)
+def create_person(body: PersonCreate, db: Session = Depends(get_db), principal: Principal = Depends(authenticate)) -> PersonOut:
+    internal_id = body.external_id if principal.tenant_id == "demo" else digest(principal.tenant_id + ":" + body.external_id)
+    person = Person(external_id=internal_id, external_ref=body.external_id,
+                    display_name=body.display_name, tenant_id=principal.tenant_id)
     db.add(person)
     try:
+        audit(db, principal, "person.created", body.external_id)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -95,8 +120,9 @@ def create_person(body: PersonCreate, db: Session = Depends(get_db)) -> PersonOu
 
 
 @app.get("/v1/people", response_model=list[PersonOut], dependencies=[Depends(require_key)])
-def list_people(db: Session = Depends(get_db)) -> list[PersonOut]:
-    people = db.scalars(select(Person).order_by(Person.created_at.desc()).limit(500)).unique().all()
+def list_people(db: Session = Depends(get_db), principal: Principal = Depends(authenticate)) -> list[PersonOut]:
+    people = db.scalars(select(Person).where(Person.tenant_id == principal.tenant_id)
+                        .order_by(Person.created_at.desc()).limit(500)).unique().all()
     return [person_out(person) for person in people]
 
 
@@ -106,10 +132,9 @@ async def enroll(
     face_files: list[UploadFile] | None = File(default=None),
     voice_files: list[UploadFile] | None = File(default=None),
     db: Session = Depends(get_db),
+    principal: Principal = Depends(operator),
 ) -> EnrollmentOut:
-    person = db.get(Person, person_id)
-    if person is None or not person.active:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ")
+    person = get_person(db, person_id, principal)
     face_added = voice_added = 0
     rejected: list[str] = []
     for modality, files in (("face", face_files or []), ("voice", voice_files or [])):
@@ -117,7 +142,7 @@ async def enroll(
             try:
                 allowed = {"image/jpeg", "image/png", "image/webp"} if modality == "face" else {"audio/wav", "audio/x-wav", "audio/wave"}
                 payload = await read_upload(upload, allowed)
-                result = biometrics.face(payload) if modality == "face" else biometrics.voice(payload)
+                result = await run_in_threadpool(biometrics.face if modality == "face" else biometrics.voice, payload)
                 digest = sha256(payload)
                 duplicate = db.scalar(
                     select(BiometricSample.id).where(
@@ -141,24 +166,19 @@ async def enroll(
                 rejected.append(f"{upload.filename}: {detail}")
     if not face_files and not voice_files:
         raise HTTPException(status_code=400, detail="Cần ít nhất một tệp")
+    audit(db, principal, "person.enrolled", person_id)
     db.commit()
     db.refresh(person)
     output = person_out(person)
     return EnrollmentOut(person_id=person_id, face_added=face_added, voice_added=voice_added, rejected=rejected, ready=output.ready)
 
 
-@app.post("/v1/verify", response_model=VerificationOut, dependencies=[Depends(require_key)])
-async def verify(
-    person_id: str = Form(...),
-    session_id: str = Form(...),
-    face_file: UploadFile | None = File(default=None),
-    voice_file: UploadFile | None = File(default=None),
-    db: Session = Depends(get_db),
+async def perform_verification(
+    person_id: str, session_id: str, face_file: UploadFile | None, voice_file: UploadFile | None,
+    db: Session, principal: Principal,
 ) -> VerificationOut:
     started = time.perf_counter()
-    person = db.get(Person, person_id)
-    if person is None or not person.active:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ")
+    person = get_person(db, person_id, principal)
     enrolled = {"face": [], "voice": []}
     for sample in person.samples:
         enrolled[sample.modality].append(sample.embedding)
@@ -177,21 +197,15 @@ async def verify(
         allowed = {"image/jpeg", "image/png", "image/webp"} if modality == "face" else {"audio/wav", "audio/x-wav", "audio/wave"}
         payload = await read_upload(upload, allowed)
         try:
-            result = biometrics.face(payload) if modality == "face" else biometrics.voice(payload)
+            result = await run_in_threadpool(biometrics.face if modality == "face" else biometrics.voice, payload)
         except BiometricError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         scores[modality] = max(cosine(result.embedding, reference) for reference in enrolled[modality])
         qualities[modality] = result.quality
     thresholds = {"face": registry.current.face_threshold, "voice": registry.current.voice_threshold}
-    for modality in ("face", "voice"):
-        if scores[modality] is not None and scores[modality] < thresholds[modality]:
-            reasons.append(f"{modality}_mismatch")
-        if qualities[modality] is not None and qualities[modality] < 0.25:
-            reasons.append(f"low_{modality}_quality")
-    available_risks = [1.0 - max(0.0, scores[m]) for m in ("face", "voice") if scores[m] is not None]
-    risk = float(np.mean(available_risks)) if available_risks else 1.0
-    risk = min(1.0, risk + 0.18 * len([reason for reason in reasons if reason.startswith("missing_") or reason.startswith("not_enrolled_")]))
-    accepted = not reasons and bool(available_risks)
+    policy_accepted, risk, policy_reasons = decide(scores, qualities, thresholds, settings.require_both_modalities)
+    reasons.extend(policy_reasons)
+    accepted = policy_accepted and not reasons
     latency_ms = round((time.perf_counter() - started) * 1000)
     event = VerificationEvent(
         person_id=person_id, session_id=session_id, accepted=accepted, risk_score=risk,
@@ -199,7 +213,7 @@ async def verify(
         voice_quality=qualities["voice"], reasons=reasons, model_version=registry.current.version, latency_ms=latency_ms,
     )
     db.add(event)
-    db.commit()
+    db.flush()
     db.refresh(event)
     decision = "allow" if accepted else "review"
     VERIFY.labels(decision=decision).inc()
@@ -212,9 +226,22 @@ async def verify(
     )
 
 
+@app.post("/v1/verify", response_model=VerificationOut)
+async def verify(
+    person_id: str = Form(...), session_id: str = Form(...),
+    face_file: UploadFile | None = File(default=None), voice_file: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db), principal: Principal = Depends(operator),
+) -> VerificationOut:
+    result = await perform_verification(person_id, session_id, face_file, voice_file, db, principal)
+    audit(db, principal, "verification.direct", result.event_id)
+    db.commit()
+    return result
+
+
 @app.get("/v1/events", dependencies=[Depends(require_key)])
-def events(limit: int = 100, db: Session = Depends(get_db)) -> list[dict]:
-    rows = db.scalars(select(VerificationEvent).order_by(VerificationEvent.created_at.desc()).limit(min(limit, 500))).all()
+def events(limit: int = 100, db: Session = Depends(get_db), principal: Principal = Depends(authenticate)) -> list[dict]:
+    rows = db.scalars(select(VerificationEvent).join(Person).where(Person.tenant_id == principal.tenant_id)
+                      .order_by(VerificationEvent.created_at.desc()).limit(max(1, min(limit, 500)))).all()
     return [
         {"id": row.id, "person_id": row.person_id, "session_id": row.session_id, "accepted": row.accepted,
          "risk_score": row.risk_score, "face_score": row.face_score, "voice_score": row.voice_score,
@@ -224,18 +251,73 @@ def events(limit: int = 100, db: Session = Depends(get_db)) -> list[dict]:
     ]
 
 
-@app.post("/v1/admin/reload-model", dependencies=[Depends(require_key)])
+@app.post("/v1/simulation/observations", response_model=VerificationOut, dependencies=[Depends(require_key)])
+def simulate_observation(body: SimulationIn, db: Session = Depends(get_db), principal: Principal = Depends(platform)) -> VerificationOut:
+    """Inject score observations for drift demos; disabled unless explicitly configured."""
+    if not settings.enable_simulation:
+        raise HTTPException(status_code=404, detail="Simulation endpoint is disabled")
+    get_person(db, body.person_id, principal)
+    scores = {"face": body.face_score, "voice": body.voice_score}
+    qualities = {"face": body.face_quality, "voice": body.voice_quality}
+    thresholds = {"face": registry.current.face_threshold, "voice": registry.current.voice_threshold}
+    accepted, risk, reasons = decide(scores, qualities, thresholds, settings.require_both_modalities)
+    event = VerificationEvent(
+        person_id=body.person_id, session_id=body.session_id, accepted=accepted, risk_score=risk,
+        face_score=body.face_score, voice_score=body.voice_score, face_quality=body.face_quality,
+        voice_quality=body.voice_quality, reasons=reasons, model_version=registry.current.version,
+        latency_ms=0,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    decision = "allow" if accepted else "review"
+    VERIFY.labels(decision=decision).inc()
+    return VerificationOut(
+        event_id=event.id, person_id=body.person_id, session_id=body.session_id,
+        accepted=accepted, decision=decision, risk_score=round(risk, 4),
+        face_score=body.face_score, voice_score=body.voice_score,
+        face_quality=body.face_quality, voice_quality=body.voice_quality,
+        thresholds=thresholds, reasons=reasons, model_version=registry.current.version, latency_ms=0,
+    )
+
+
+@app.put("/v1/events/{event_id}/feedback", status_code=201, dependencies=[Depends(require_key)])
+def add_feedback(event_id: str, body: FeedbackIn, db: Session = Depends(get_db), principal: Principal = Depends(operator)) -> dict:
+    if db.scalar(select(VerificationEvent).join(Person).where(
+        VerificationEvent.id == event_id, Person.tenant_id == principal.tenant_id,
+    )) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy event")
+    existing = db.scalar(select(VerificationFeedback).where(VerificationFeedback.event_id == event_id))
+    if existing:
+        existing.is_genuine, existing.reviewer, existing.notes = body.is_genuine, body.reviewer, body.notes
+        feedback = existing
+    else:
+        feedback = VerificationFeedback(event_id=event_id, **body.model_dump())
+        db.add(feedback)
+    audit(db, principal, "feedback.updated", event_id)
+    db.commit()
+    db.refresh(feedback)
+    FEEDBACK.labels(label="genuine" if body.is_genuine else "impostor").inc()
+    return {"event_id": event_id, "is_genuine": feedback.is_genuine, "reviewer": feedback.reviewer}
+
+
+@app.post("/v1/admin/reload-model", dependencies=[Depends(platform)])
 def reload_model() -> dict:
     try:
         runtime = registry.load()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Không tải được model Registry: {exc}") from exc
+    MODEL_INFO.clear()
     MODEL_INFO.labels(version=runtime.version, backend=settings.model_backend).set(1)
     return runtime.__dict__
+
+
+from .saas import router as saas_router  # noqa: E402
+app.state.perform_verification = perform_verification
+app.include_router(saas_router)
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception(_, exc: Exception):
     REQUESTS.labels(route="unhandled", status="500").inc()
     return JSONResponse(status_code=500, content={"detail": "Lỗi nội bộ", "type": type(exc).__name__})
-

@@ -78,6 +78,7 @@ services:
       dockerfile: api/Dockerfile
       args: {INSTALL_PRETRAINED: "true"}
     command: python pipeline/download_models.py
+    user: "0:0"
     environment:
       MODEL_DIR: /models
     volumes: ["./models:/models"]
@@ -92,11 +93,14 @@ services:
       postgres: {condition: service_healthy}
       mlflow: {condition: service_healthy}
       model-init: {condition: service_completed_successfully}
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment:
       MODEL_DIR: /models
       MINIO_ENDPOINT: http://minio:9000
-    volumes: ["./models:/models"]
+      ENABLE_SIMULATION: ${ENABLE_SIMULATION:-true}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:18100}
+      WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-legacy-demo,localhost,127.0.0.1}
+    volumes: ["./models:/models", "./reports:/reports:ro"]
     ports: ["127.0.0.1:18100:8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -113,8 +117,46 @@ services:
       api: {condition: service_healthy}
     environment:
       API_URL: http://api:8000
-      API_KEY: ${API_KEY:-demo-internal-key}
+      PORTAL_LINKS_JSON: ${PORTAL_LINKS_JSON:-}
     ports: ["127.0.0.1:18501:8501"]
+    restart: unless-stopped
+
+  webhook-worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: python -m app.webhooks
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-legacy-demo,localhost,127.0.0.1}
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports: ["127.0.0.1:18002:8002"]
+    restart: unless-stopped
+
+  legacy-demo:
+    build:
+      context: .
+      dockerfile: legacy_demo/Dockerfile
+    environment:
+      API_URL: http://api:8000
+      SAAS_CONFIG: /config/local-saas.json
+    volumes:
+      - ./data:/config:ro
+      - legacy-data:/data
+    ports: ["127.0.0.1:18600:8000"]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   airflow-init:
@@ -124,7 +166,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     user: "0:0"
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment: &airflow-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -151,7 +193,7 @@ services:
     depends_on:
       airflow-init: {condition: service_completed_successfully}
       api: {condition: service_healthy}
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment: *airflow-env
     volumes: *airflow-volumes
     command: webserver
@@ -170,7 +212,7 @@ services:
     depends_on:
       airflow-init: {condition: service_completed_successfully}
       api: {condition: service_healthy}
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}
     environment: *airflow-env
     volumes: *airflow-volumes
     command: scheduler
@@ -178,9 +220,36 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.4.0
-    depends_on: [api]
-    volumes: ["./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    depends_on: [api, drift-monitor, alertmanager]
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     ports: ["127.0.0.1:19090:9090"]
+    restart: unless-stopped
+
+  drift-monitor:
+    build:
+      context: .
+      dockerfile: monitoring/Dockerfile
+    depends_on:
+      postgres: {condition: service_healthy}
+      api: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-biometric}:${POSTGRES_PASSWORD:-biometric_dev_only}@postgres:5432/${POSTGRES_DB:-biometric}
+      MONITOR_WINDOW_SIZE: ${MONITOR_WINDOW_SIZE:-100}
+      PERFORMANCE_WINDOW_SIZE: ${PERFORMANCE_WINDOW_SIZE:-100}
+      MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS:-60}
+      PSI_ALERT_THRESHOLD: ${PSI_ALERT_THRESHOLD:-0.2}
+      EVIDENTLY_REPORT: /reports/data-drift.html
+    volumes: ["./reports:/reports"]
+    ports: ["127.0.0.1:18001:8001"]
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    volumes: ["./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    ports: ["127.0.0.1:19093:9093"]
     restart: unless-stopped
 
   grafana:
@@ -202,3 +271,4 @@ volumes:
   postgres-data:
   minio-data:
   grafana-data:
+  legacy-data:
