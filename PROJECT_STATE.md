@@ -1,74 +1,73 @@
-# Resume here — SaaS verification / DDM501
+# Trạng thái tiếp tục — DDM501, 28/09/2026
 
-## Accepted scope (2026-09-27)
+## Phạm vi và quyền đã có
 
-B2B SaaS product, container/PaaS deployment model emulated on this local Docker stack. Support private/on-premise deployment using the same code. Complete and demonstrate the course pipeline. User authorized implementation and local Docker operation. Remote GitHub push/deployment and paid cloud resources have NOT been performed. Do not claim those are verified.
+Hoàn thiện dự án theo rubric/full pipeline, monitoring tập trung Grafana, cảnh báo Telegram, CI/CD trên repo hiện tại. Người dùng đã cho phép sửa code, chạy Docker, commit/push `main`, sử dụng GitHub đã auth qua VS Code/Git Credential Manager. Bot Telegram đã được tạo, credentials trong `.env`. Không triển khai cloud có phí hoặc tạo bằng chứng human/team giả. Không dùng subagents.
 
-## Working rules
+## Kết quả hiện tại
 
-- Existing worktree has many user-owned tracked/untracked changes; preserve all, do not reset/clean.
-- Do not print `.env`, API keys, tokens or webhook secrets in logs/reports.
-- Main working directory is this repository. Docker Desktop is running.
-- Read this file after reset, then inspect git status and the actual source/tests before continuing.
-- Every run handoff must include ALL pipeline URLs (user preference).
-- No delegation was requested. Keep work in the primary agent.
+- DAG `isolated_holdout_20260928`: 6/6 tasks success; snapshot → validate → calibrate/register → RAI → gate → reload. Champion/serving version **9**, 282 feature rows thuộc tenant demo.
+- Evaluation: max-template scoring giống serving; năm identity partitions, một holdout giữ ngoài toàn bộ tuning, bốn fold CV nội bộ. Chọn margin nhỏ nhất đạt ngân sách CV từ tập ứng viên cố định; gate calibration/CV/holdout FAR/FRR vẫn 20%.
+- **52 tests pass; coverage 88,76%** trên toàn API/monitoring và các module evaluation/snapshot/validation/promotion/RAI được khai báo. Ruff/diff checks pass.
+- Full pipeline verification: 8 nhóm pass, inference ảnh/WAV thật. SaaS live: 19 checks pass. Portable image đã kiểm chứng local không có bind mount model.
+- Grafana: 59 panels gồm 7 row headers, 64 truy vấn PromQL/SQL/LogQL đã chạy; readiness/data/drift/performance/Registry/review/webhook/DAG/RAI/resources/logs. Human thiếu nhãn hiển thị chờ, không giả dữ liệu.
+- Reports HTML/JSON cùng origin Grafana: anonymous 401, authenticated 200. Docker stats qua read-only proxy; Alloy → Loki tập trung logs.
+- Alertmanager → ops-monitor → Telegram đã gửi thành công tới `@ddm501_face_voice_proctoring_bot`, không log token.
+- Restore drill: dump 563.959 bytes, restore vào DB riêng, đối chiếu tám bảng rồi xóa DB tạm; giữ dữ liệu gốc. Rollback rehearsal 8 → 7 → 8, readiness pass. Champion hiện tại là 9.
+- Hai mappings, monitoring mapping, operations/capacity-cost và PowerPoint 12 slides có speaker notes đã tạo. Xem [VERIFICATION.md](VERIFICATION.md) để lấy số liệu/bằng chứng mới nhất.
 
-## Plan / progress
+## GitHub và runtime
 
-- [x] Existing Airflow→MLflow→API→monitoring verified locally (see VERIFICATION.md).
-- [x] Phase 1: tenant isolation, scoped/revocable API keys, additive migration, audit including review notes. Docker rollout verified; old data preserved.
-- [x] Phase 2 implementation: expiring one-time verification sessions; hosted verify UI; durable signed webhook outbox/retries. SaaS tests passed locally.
-- [x] Phase 3: legacy exam simulator validates backend result, portal and admin-only monitoring links. Live API/legacy integration verified; camera/mic browser acceptance still requires a real user.
-- [x] Phase 4 local verification: 34 tests pass, declared core coverage 84.85%; live SaaS integration 19 checks pass after rebuild. Full pipeline verification passes 8 groups. Course mapping/docs refreshed.
-- [x] Phase 5 local: portable PaaS image tested without mounts (19 checks pass), private overlay config validated, CI checks, backup/rollback/load guidance written. Not an actual cloud/customer deployment.
-- [x] Final local checkpoint: evidence/docs and URLs saved. External/human requirements below remain open.
+Repo: https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring, branch `main`.
 
-## Baseline
+Run [36430718832](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/runs/36430718832) **success**, commit `3e98c770c913b84f30e68e541d044551f966503c`, ngày 28/09/2026. Cả ba jobs **quality, containers, deploy-demo** thành công, gồm kiểm chứng dashboard/protected reports/freshness và upload artifacts. Remote: **52 passed, coverage 88,69%**; local: **52 passed, coverage 88,76%**. Deploy thực tế trên Docker Desktop qua runner Windows, source release ngoài OneDrive, dữ liệu/secrets giữ nguyên; chưa phải public cloud deployment.
 
-26 tests passed, core coverage 85.04%. Real DAG `verification_20260927_gatefix` passed 6 tasks; champion version 5. 282 feature rows. Real-media allow/review worked. Evidently simulation alerts intentionally firing. `reports/verification.json` is existing runtime evidence; reports are gitignored. Demo face/voice identities are synthetic pairings; do not claim production biometric accuracy. No liveness/anti-replay biometric model yet.
+Runner Windows `ddm501-local-windows`, labels `self-hosted`, `Windows`, `ddm501-demo`, tại `data/github-runner` (gitignored). Chạy hidden theo phiên người dùng, chưa cài Windows service. Sau reboot khởi động lại theo [OPERATIONS.md](OPERATIONS.md). Quality/build chạy GitHub-hosted Ubuntu; deploy chỉ trusted main, environment `demo` giới hạn main, concurrency một deploy.
 
-## Resume commands
+`DDM501_RUNTIME_ROOT` trỏ repo ban đầu. Deploy dùng `.venv/Scripts/python.exe` đã có `dotenv`/`requests`, chỉ bypass execution policy ở process script. `prepare_runner_env.py --stage-deployment` dùng Git archive đúng commit SHA, materialize source tại `%LOCALAPPDATA%/DDM501/deployments/<sha>` ngoài OneDrive rồi giữ `.env`/Compose project/named volumes và absolute mounts models/data/reports/Airflow logs. Docker từng không đọc được file bind từ checkout lồng sâu trong OneDrive; đã kiểm chứng Docker đọc được config từ release local. Không xóa release đang chạy. Repo ban đầu tiếp tục giữ dữ liệu và secrets.
+
+## Máy local và RAM
+
+Docker từng OOM khi tutorial cũ và ECAPA/Evidently chạy cùng lúc. Đã tạo `C:\Users\tdd23\.wslconfig` với WSL2 memory 6GB, swap 6GB. MLflow một worker; Airflow một web worker và một LocalExecutor slot, có biến cấu hình trong `.env.example`.
+
+Sáu container tutorial cũ đang **tạm dừng**, volumes/dữ liệu giữ nguyên. Chỉ khởi động khi có đủ RAM:
 
 ```powershell
-git status --short
-docker compose ps
-python -m ruff check api pipeline monitoring tests
-python -m pytest -q
+docker start tutorial07-airflow-scheduler tutorial07-airflow-webserver tutorial07-mlflow ddm501-t03-airflow ddm501-t02-02-mlflow ddm501-t02-01-mlflow
 ```
 
-## URLs
+Không overwrite `.env` bằng `.env.example`, không `down -v`, reset/clean hay xóa models/data/reports/runner. Không print/commit tokens, tenant keys hoặc backup. Runtime reports/data/models được gitignore.
 
+## URLs đầy đủ
+
+- Grafana: http://localhost:13000/d/biometric-overview
+- Reports đăng nhập: http://localhost:13000/reports/data-drift.html, http://localhost:13000/reports/model-performance.html, http://localhost:13000/reports/synthetic-performance.html, http://localhost:13000/reports/data-quality.html, http://localhost:13000/reports/model-evaluation.html, http://localhost:13000/reports/pipeline-status.html, http://localhost:13000/reports/responsible-ai.html, http://localhost:13000/reports/alerts.html
 - Portal: http://localhost:18501
-- Legacy exam: http://localhost:18600
-- Hosted verify: open the session link generated by portal/API (contains a private one-time token).
+- Legacy exam simulator: http://localhost:18600
+- Hosted verify: link phiên do portal/API tạo, chứa private one-time token; không đưa token vào báo cáo.
 - API docs: http://localhost:18100/docs
-- Health/readiness: http://localhost:18100/health and http://localhost:18100/ready
+- Health/readiness: http://localhost:18100/health, http://localhost:18100/ready
 - Airflow: http://localhost:18081
 - MLflow: http://localhost:15030
-- MinIO console: http://localhost:19101
-- Grafana: http://localhost:13000/d/biometric-overview
-- Prometheus targets: http://localhost:19090/targets
-- Prometheus alerts: http://localhost:19090/alerts
+- MinIO console: http://localhost:19101; S3 endpoint http://localhost:19100
+- PostgreSQL: localhost:15433
+- Prometheus: http://localhost:19090/targets, http://localhost:19090/alerts
 - Alertmanager: http://localhost:19093
 - Drift metrics: http://localhost:18001/metrics
 - Webhook metrics: http://localhost:18002/metrics
-- Evidently: reports/data-drift.html and reports/model-performance.html; platform portal can download these.
-- GitHub Actions (configured, not remotely verified): https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions
+- Ops metrics: http://localhost:18003/metrics/
+- GitHub Actions: https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions
+- Telegram: https://t.me/ddm501_face_voice_proctoring_bot
 
-## Current next action
+Grafana/Airflow demo `admin/admin`, loopback only. Monitoring là quyền platform admin; tenant selector chỉ lọc SQL, không biến dashboard thành quyền truy cập tenant.
 
-Live SaaS pass: genuine accepted + one-time exam admission, impostor reviewed then operator rejected, 3 signed webhooks delivered, cross-tenant access denied. Local tenant provisioned with two real-media demo identities. Backup is data/backups/pre-saas-20260927.dump. Airflow run saas_tenant_scope_20260927 succeeded. Load smoke: 20 requests, concurrency 2, 0 errors, p95 0.244s (warm CPU; not capacity claim). RAI now separates synthetic/human and uses class-conditional FAR/FRR; genuine-human fairness data insufficient.
+## Còn cần người dùng/dữ liệu ngoài code
 
-Latest verification: champion version 7, run saas_tenant_scope_20260927 (6 tasks success), 282 demo feature rows. Three Prometheus targets UP, 12 Grafana panels, 8 alert rules validated. Intentional DataDrift and PerformanceDegraded alerts reached Alertmanager. Updated runtime artifacts: reports/verification.json, reports/saas-verification.json, reports/paas-verification.json, reports/load-test.json. Independent webhook/session keys required in private overlay. OFFLINE_MODE only skips model downloads; the complete stack is not certified air-gapped.
+1. Camera/microphone browser acceptance và partner backend thật. Upload media/API/legacy simulator đã kiểm chứng.
+2. Dữ liệu biometric có consent, nhãn human và demographic evaluation hợp lệ. Human fairness hiện `insufficient_data`; synthetic bootstrap không chứng minh production accuracy. Chưa face PAD/audio anti-spoof.
+3. Tên/vai trò/contribution thật, meaningful commits của thành viên, demo/Q&A. Repo đã xác minh public qua GitHub API ngày 28/09, đáp ứng điều kiện truy cập trong rubric. Không tạo bằng chứng giả.
+4. Cloud/customer host/domain/TLS/SSO và SLA/capacity pilot nếu muốn rollout ngoài local. Chưa provision cloud trả phí; local restore không chứng minh cloud disaster recovery.
 
-Main local stack is left running. Temporary ddm501-paas-smoke container should be removed after smoke (no volumes/data to retain). Provision writes SECRET data/local-saas.json (gitignored), never print it. New tenant features stay out of default training (TRAINING_TENANT_ID=demo). No remote push, paid resource or customer deployment was performed.
+## Tiếp tục an toàn
 
-Next meaningful work requiring user participation/access:
-
-1. Browser acceptance with camera/mic and actual partner integration contract; legacy selector is a simulator, not real login.
-2. Actual GitHub Actions + Linux self-hosted runner run, deployment secrets/environment protection, external notification destination. Do not claim configured workflow is executed CI/CD.
-3. Choose cloud/customer host and domain, configure TLS/SSO/private monitoring, managed persistence/secrets and restore drill. Use DEPLOYMENT.md; do not spend money or publish ports without scope confirmation.
-4. Obtain consented identity-disjoint real evaluation and human labels; current fairness gate is insufficient_data. Add liveness/anti-spoof before risk-sensitive rollout; protocol token replay defense is not biometric replay detection.
-5. Fill real team names/contributions/commits, instructor access and final slides/demo per DEMO_PRESENTATION.md and rubric PDF. Do not invent team evidence.
-
-Local resume: read SAAS_INTEGRATION.md, DEPLOYMENT.md and VERIFICATION.md, inspect working tree, run CI script and relevant live checks only after code changes. Never reset the existing dirty tree or overwrite .env with .env.example.
+Đọc file này và [VERIFICATION.md](VERIFICATION.md), kiểm tra git status/nguồn thực tế. Chỉ chạy checks phù hợp thay đổi. Lệnh kiểm chứng: `.venv/Scripts/python.exe pipeline/verify_stack.py --dag-run isolated_holdout_20260928 --inference --require-alerts`, `pipeline/verify_monitoring_centre.py --send-alert`, `pipeline/verify_saas.py`. Inference/SaaS thêm events demo. `pipeline/github_ci.py` lấy Git Credential Manager trong bộ nhớ và chỉ ghi trạng thái đã lọc.

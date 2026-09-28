@@ -15,9 +15,24 @@
 | Responsible AI | 10% | Consent, source-separated labels, immutable prediction/manual appeal, quality slices, Wilson 95% CI; reason codes/margins/sensitivity/counterfactual; RAI trước promotion | Human gate hiện insufficient_data; chưa demographic fairness/PAD/audio anti-spoof |
 | Documentation | 10% | README/badge, API examples, architecture/integration/operations/deployment, hai mappings, capacity/cost, 12-slide PowerPoint có notes | Nhóm rà soát và điền tên/contribution thật |
 
+### Đối chiếu các tiêu chí con trong development rubric
+
+| Nhóm | Tiêu chí con | Vị trí kiểm tra |
+|---|---|---|
+| Problem | Problem Statement, Requirements, Success Metrics | `PROJECT_REQUIREMENTS.md`, `SCALABILITY_COST.md` |
+| Architecture | Architecture, Data Flow, Tech Decisions | `ARCHITECTURE.md`, `SAAS_INTEGRATION.md`, `DEPLOYMENT.md` |
+| ML Pipeline | Data Pipeline, Model Training, Experiment Tracking | Snapshot/validation, identity evaluation, nested MLflow objectives; model family là calibrated policy trên frozen encoders |
+| Deployment | API Design, Containerization, Orchestration | OpenAPI/versioned endpoints; API multi-stage Dockerfile, non-root runtime; Compose healthchecks/readiness |
+| Monitoring | Metrics, Dashboards, Alerting | `MONITORING_MAPPING.md`, Grafana queries/reports, Prometheus rules và Telegram delivery |
+| Testing / CI/CD | Test Coverage, Test Types, CI/CD Pipeline | Unit/API/integration/data/model tests, declared coverage 88,76%; GitHub quality/build/deploy evidence |
+| Responsible AI | Fairness, Explainability, Ethics | `RESPONSIBLE_AI.md`, source-separated slices/intervals và insufficient-data gate; policy sensitivity/counterfactual; consent/privacy/manual appeal |
+| Documentation | README, API Docs, Code Quality | README/setup/examples/troubleshooting; Swagger/OpenAPI; Ruff và tests |
+
+Không bỏ sót tiêu chí con trong bảng rubric. Phần fairness chưa đủ dữ liệu human để kết luận đạt; explainability hiện ở mức policy, không phải SHAP/LIME trên encoder. Các giới hạn này ảnh hưởng mức đánh giá và được báo rõ.
+
 ### Presentation và contribution
 
-Rubric thuyết trình riêng: introduction 15%, content 40%, demo 15%, Q&A 15%, organization 15%. [Slide](docs/DDM501_Face_Voice_Proctoring.pptx) và [kịch bản](DEMO_PRESENTATION.md) bao phủ các phần này. Mỗi thành viên phải trình bày/Q&A thật; contribution có thể điều chỉnh ±20%. Không tạo tên, nhãn human, commit hay phân công giả. Quyền truy cập giảng viên chưa được xác minh.
+Rubric thuyết trình riêng: Problem & Solution 15%, Technical Deep Dive 40%, Responsible AI 15%, Q&A Handling 15%, Live Demo 15%. [Slide](docs/DDM501_Face_Voice_Proctoring.pptx) và [kịch bản](DEMO_PRESENTATION.md) bao phủ các phần này. Thời lượng yêu cầu 15–20 phút trình bày + 10 phút Q&A. Mỗi thành viên phải tham gia demo/Q&A thật; contribution có thể điều chỉnh ±20%. Không tạo tên, nhãn human, commit hay phân công giả. Repo đã xác minh public qua GitHub API ngày 28/09, đáp ứng điều kiện public hoặc instructor collaborator.
 
 ## 2. Mapping full pipeline
 
@@ -41,7 +56,7 @@ Rubric thuyết trình riêng: introduction 15%, content 40%, demo 15%, Q&A 15%,
 | Operation/recovery | Outbox/audit, recovery scripts, docs | Isolated restore row counts; champion rollback/readiness then restore original |
 | Automation/CI/CD | `.github/workflows/ci.yml`, runner | Quality → container build → trusted-main deployment → Grafana verification artifact |
 
-Theo file pipeline môn học, hai nửa training/Registry/API và serving/monitoring/operation đều có triển khai. DDM501 nhấn mạnh nửa serving → monitoring → operation. Không thiếu bước kỹ thuật trong mapping; các bằng chứng human/customer/cloud/team còn mở phải trình bày đúng phạm vi.
+Theo `MLOps_full_pipeline.txt`, mỗi nửa tương ứng 5/10 điểm: (1) Airflow → training → Registry/MLflow → API; (2) serving → Grafana/Prometheus/Evidently → simulation drift/PSI → automation/alerts/operation. Cả hai nửa đều có triển khai và bằng chứng chạy; DDM501 nhấn mạnh nửa thứ hai. Các bằng chứng human/customer/cloud/team còn mở phải trình bày đúng phạm vi; không suy ra đã đạt điểm tối đa từ việc có đủ bước.
 
 ## Grafana và Telegram
 

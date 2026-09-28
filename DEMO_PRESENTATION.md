@@ -17,7 +17,7 @@ Slide có speaker notes: [DDM501_Face_Voice_Proctoring.pptx](docs/DDM501_Face_Vo
 - Client giả mạo `success=true` hoặc gửi lại callback có vào thi được không?
 - Nếu callback đến lặp/trễ/ngược thứ tự hoặc worker chết thì xử lý thế nào?
 - Dữ liệu tenant A có vào training/model monitoring tenant B không? (Training mặc định chỉ demo; operational monitoring toàn nền tảng chỉ admin được xem.)
-- Vì sao tune ngưỡng thay vì train SFace/ECAPA từ đầu? CV ở cấp pair có giới hạn gì?
+- Vì sao tune ngưỡng thay vì train SFace/ECAPA từ đầu? Vì sao giữ holdout riêng khỏi bốn fold CV nội bộ? Identity-disjoint demo vẫn có giới hạn gì?
 - Rủi ro replay/deepfake khác replay giao thức ra sao?
 - Vì sao test demo media score 1.0 không phải bằng chứng chất lượng model?
 
