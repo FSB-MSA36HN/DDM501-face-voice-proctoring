@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
-import os
 import math
+import os
+
 
 def gate(metrics: dict[str, float], max_error_rate: float = 0.20, min_pairs: int = 5, require_identity: bool = True) -> list[str]:
     failures = []

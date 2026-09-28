@@ -3,9 +3,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import create_engine
-
 from data_snapshot import extract, read_snapshot
+from sqlalchemy import create_engine
 
 path = Path(os.getenv("SNAPSHOT_PATH", str(
     Path(os.getenv("SNAPSHOT_DIR", "/opt/project/data/snapshots"))

@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-
 from app.config import Settings
 from app.registry import RegistryLoader
 

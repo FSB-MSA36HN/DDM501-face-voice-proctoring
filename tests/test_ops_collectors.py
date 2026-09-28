@@ -7,7 +7,8 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 
-from monitoring import ops_monitor as ops, telegram
+from monitoring import ops_monitor as ops
+from monitoring import telegram
 
 
 def response(body, status=200):

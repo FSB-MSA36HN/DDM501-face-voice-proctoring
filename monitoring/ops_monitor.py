@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, text
 from pipeline.data_snapshot import extract
 from pipeline.responsible_ai_report import QUERY, build_report
 from pipeline.validate_data import validate
+
 from .telegram import request_telegram
 
 LOGGER = logging.getLogger('ops-monitor')

@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11", cache: pip}
-      - run: pip install -r requirements-api.txt -r requirements-monitoring.txt pytest pytest-cov ruff
+      - run: pip install -r requirements-api.txt -r requirements-monitoring.txt -r requirements-dev.txt
       - run: ruff check api pipeline monitoring tests legacy_demo
       - run: python -m compileall -q api pipeline monitoring airflow/dags ui legacy_demo
       - run: python pipeline/build_dashboard.py && git diff --exit-code monitoring/grafana/dashboards/biometric-overview.json

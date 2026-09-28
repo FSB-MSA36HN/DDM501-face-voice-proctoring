@@ -1,7 +1,5 @@
 import pytest
-
 from app.decision import decide
-
 
 THRESHOLDS = {"face": 0.5, "voice": 0.4}
 

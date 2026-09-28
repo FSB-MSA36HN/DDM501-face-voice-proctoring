@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -12,17 +12,24 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from .auth import Principal, audit, authenticate, digest, get_person, operator, platform
 from .biometrics import BiometricEngine, BiometricError, cosine
 from .config import get_settings
 from .db import engine, get_db
-from .auth import Principal, authenticate, audit, digest, get_person, operator, platform
-from .migrations import migrate
 from .decision import decide
 from .explainability import explain
 from .metrics import FEEDBACK, LATENCY, MODEL_INFO, PEOPLE, REQUESTS, VERIFY
+from .migrations import migrate
 from .models import BiometricSample, Person, VerificationEvent, VerificationFeedback
 from .registry import RegistryLoader
-from .schemas import EnrollmentOut, FeedbackIn, PersonCreate, PersonOut, SimulationIn, VerificationOut
+from .schemas import (
+    EnrollmentOut,
+    FeedbackIn,
+    PersonCreate,
+    PersonOut,
+    SimulationIn,
+    VerificationOut,
+)
 from .storage import ObjectStore, sha256
 
 settings = get_settings()
@@ -316,6 +323,7 @@ def reload_model() -> dict:
 
 
 from .saas import router as saas_router  # noqa: E402
+
 app.state.perform_verification = perform_verification
 app.include_router(saas_router)
 

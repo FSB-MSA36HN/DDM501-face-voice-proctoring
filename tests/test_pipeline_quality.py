@@ -1,10 +1,10 @@
-import pytest
 import numpy as np
+import pytest
 
 from pipeline.calibrate_and_register import choose_threshold, cross_validate
+from pipeline.data_snapshot import dataset_version, read_snapshot
 from pipeline.promotion_gate import gate
 from pipeline.validate_data import validate
-from pipeline.data_snapshot import dataset_version, read_snapshot
 
 
 def sample_rows():

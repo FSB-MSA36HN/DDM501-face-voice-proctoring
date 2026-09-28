@@ -7,8 +7,8 @@ def migrate(engine) -> None:
         # Serialize concurrent API startup migrations on PostgreSQL.
         if connection.dialect.name == "postgresql":
             connection.execute(text("SELECT pg_advisory_xact_lock(5012026)"))
-        from .db import Base
         from . import models  # noqa: F401
+        from .db import Base
         Base.metadata.create_all(connection)
         columns = {item["name"] for item in inspect(connection).get_columns("people")}
         if "tenant_id" not in columns:

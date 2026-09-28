@@ -7,7 +7,16 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
@@ -17,7 +26,15 @@ from sqlalchemy.orm import Session
 from .auth import Principal, audit, authenticate, digest, get_person, operator, platform
 from .config import get_settings
 from .db import get_db
-from .models import AuditLog, Tenant, TenantKey, VerificationEvent, VerifySession, WebhookDelivery, utcnow
+from .models import (
+    AuditLog,
+    Tenant,
+    TenantKey,
+    VerificationEvent,
+    VerifySession,
+    WebhookDelivery,
+    utcnow,
+)
 
 router = APIRouter()
 

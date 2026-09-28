@@ -3,9 +3,8 @@ import io
 
 import cv2
 import numpy as np
-from scipy.io import wavfile
-
 from fastapi.testclient import TestClient
+from scipy.io import wavfile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 

@@ -1,6 +1,6 @@
+from app.migrations import migrate
 from sqlalchemy import create_engine, text
 
-from app.migrations import migrate
 from pipeline.responsible_ai_report import build_report
 
 
