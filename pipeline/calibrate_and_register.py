@@ -17,12 +17,12 @@ from mlflow.models import infer_signature
 from sqlalchemy import create_engine
 
 if __package__:
-    from .evaluation import identity_evaluation, select_trial
     from .data_snapshot import extract, read_snapshot
+    from .evaluation import identity_evaluation, select_trial
     from .validate_data import validate
 else:
-    from evaluation import identity_evaluation, select_trial
     from data_snapshot import extract, read_snapshot
+    from evaluation import identity_evaluation, select_trial
     from validate_data import validate
 
 
@@ -68,7 +68,7 @@ def cross_validate(positive: np.ndarray, negative: np.ndarray, folds: int = 5) -
     results, far_results, frr_results = [], [], []
     positive_folds = np.array_split(np.arange(len(positive)), folds)
     negative_folds = np.array_split(np.arange(len(negative)), folds)
-    for positive_index, negative_index in zip(positive_folds, negative_folds):
+    for positive_index, negative_index in zip(positive_folds, negative_folds, strict=False):
         positive_test, negative_test = positive[positive_index], negative[negative_index]
         positive_train = np.delete(positive, positive_index)
         negative_train = np.delete(negative, negative_index)

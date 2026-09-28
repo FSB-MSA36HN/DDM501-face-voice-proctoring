@@ -1,6 +1,6 @@
 """Live SaaS integration acceptance test; creates labelled demo sessions, never logs secrets."""
-import json
 import argparse
+import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path

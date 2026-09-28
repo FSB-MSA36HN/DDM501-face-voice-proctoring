@@ -11,8 +11,8 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-import requests
 import fsspec
+import requests
 from datasets import Audio, Image, load_dataset
 
 FACE_DATASET = "marcelohaps/lfw"
@@ -121,7 +121,7 @@ def main() -> None:
         raise RuntimeError(f"Chỉ tìm được {count}/{args.identities} identities đủ mẫu")
     args.output.mkdir(parents=True, exist_ok=True)
     manifest = []
-    for index, ((face_name, face_items), (voice_name, voice_items)) in enumerate(zip(faces.items(), voices.items()), 1):
+    for index, ((face_name, face_items), (voice_name, voice_items)) in enumerate(zip(faces.items(), voices.items(), strict=False), 1):
         demo_id = f"DEMO-{index:03d}"
         folder = args.output / demo_id
         folder.mkdir(exist_ok=True)

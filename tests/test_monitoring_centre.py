@@ -3,13 +3,18 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from app.explainability import explain
 from sqlalchemy import create_engine, text
 
-from app.explainability import explain
 from monitoring import ops_monitor
 from monitoring.drift_monitor import load_feedback
 from pipeline.build_dashboard import build
-from pipeline.evaluation import identity_evaluation, policy_scores, select_trial, threshold_trials
+from pipeline.evaluation import (
+    identity_evaluation,
+    policy_scores,
+    select_trial,
+    threshold_trials,
+)
 from pipeline.promotion_gate import promote
 from pipeline.responsible_ai_report import build_report
 

@@ -3,8 +3,6 @@ import io
 import cv2
 import numpy as np
 import pytest
-from scipy.io import wavfile
-
 from app.biometrics import (
     BiometricEngine,
     BiometricError,
@@ -16,6 +14,7 @@ from app.biometrics import (
     normalize,
 )
 from app.config import Settings
+from scipy.io import wavfile
 
 
 def test_demo_face_is_deterministic(tmp_path):

@@ -32,6 +32,7 @@ def test_deploy_rejects_missing_or_unsafe_secrets(monkeypatch, tmp_path):
 
 def test_runner_preserves_runtime_values_and_absolute_paths(tmp_path):
     from dotenv import dotenv_values
+
     from pipeline.prepare_runner_env import prepare as prepare_runner
 
     runtime, destination = tmp_path / 'runtime folder', tmp_path / 'checkout'

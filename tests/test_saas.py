@@ -5,15 +5,21 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from app.config import get_settings
+from app.db import get_db
+from app.models import (
+    BiometricSample,
+    TenantKey,
+    VerificationEvent,
+    VerifySession,
+    WebhookDelivery,
+    utcnow,
+)
+from app.saas import derived_secret
+from app.webhooks import deliver_one
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-
-from app.config import get_settings
-from app.db import get_db
-from app.models import BiometricSample, TenantKey, VerificationEvent, VerifySession, WebhookDelivery, utcnow
-from app.saas import derived_secret
-from app.webhooks import deliver_one
 
 
 @pytest.fixture
