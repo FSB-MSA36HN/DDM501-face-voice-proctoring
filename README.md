@@ -8,7 +8,7 @@ Mở **http://localhost:13000/d/biometric-overview** (`admin` / `admin` trên de
 
 [Vận hành Grafana/Telegram/CI](OPERATIONS.md) · [mapping tiêu chí và pipeline](RUBRIC_MAPPING.md) · [bằng chứng thực tế](VERIFICATION.md) · [capacity/cost](SCALABILITY_COST.md) · [slide thuyết trình](docs/DDM501_Face_Voice_Proctoring.pptx).
 
-Calibration dùng identity-disjoint CV + holdout và max-template scoring giống serving; RAI audit chạy trước gate/promotion. Performance human không chứa nhãn simulation. Kiểm chứng monitoring: `python pipeline/verify_monitoring_centre.py --send-alert`.
+Calibration dùng holdout riêng và bốn folds identity-disjoint CV nội bộ, max-template scoring giống serving; holdout không tham gia chọn threshold/margin. RAI audit chạy trước gate/promotion. Performance human không chứa nhãn simulation. Kiểm chứng monitoring: `python pipeline/verify_monitoring_centre.py --send-alert`.
 
 ## SaaS / private deployment checkpoint
 
@@ -116,9 +116,9 @@ DAG `biometric_model_pipeline` chạy mỗi Chủ nhật:
 2. kiểm tra schema, quality, duplicate, dimension và số lượng dữ liệu;
 3. feature engineering tạo genuine/impostor pairs và tìm threshold;
 4. log params, metrics, tags, artifact, signature và model vào MLflow;
-5. đăng ký alias `candidate`, kiểm tra FAR/FRR và số pairs;
-6. chỉ khi qua gate mới chuyển alias `champion`;
-7. sinh Responsible AI audit rồi hot-reload API.
+5. đăng ký alias `candidate`, sinh Responsible AI audit;
+6. kiểm tra calibration/CV/holdout FAR/FRR, class counts và snapshot fingerprint; chỉ khi qua gate mới chuyển alias `champion`;
+7. hot-reload API, kiểm tra readiness và version.
 
 Chạy ngay ngoài lịch:
 
@@ -131,6 +131,7 @@ Muốn promote candidate sau khi review metrics:
 
 ```powershell
 docker compose exec airflow-scheduler python /opt/project/pipeline/calibrate_and_register.py
+docker compose exec airflow-scheduler python /opt/project/pipeline/responsible_ai_report.py
 docker compose exec airflow-scheduler python /opt/project/pipeline/promotion_gate.py
 Invoke-RestMethod -Method Post -Headers @{'X-API-Key'='demo-internal-key'} http://localhost:18100/v1/admin/reload-model
 ```

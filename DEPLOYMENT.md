@@ -65,6 +65,6 @@ Tạo tenant/key riêng bằng platform portal. Default training chỉ dùng ten
 
 ## CI/CD và bằng chứng
 
-GitHub Actions: lint → tests/coverage >80% trên core được khai báo → build → deploy `main` trên runner `self-hosted, linux, ddm501-demo`. `pipeline/ci_local.ps1` chạy checks tương ứng tại máy phát triển và ghi rõ không phải GitHub Actions run. Setup environment `demo`, runner và secrets theo OPERATIONS.md. Chưa có bằng chứng CI/CD remote nếu workflow chưa được push và chạy bằng tài khoản repo.
+GitHub Actions: lint → tests/coverage ≥80% trên phạm vi được khai báo → build trên Ubuntu → deploy `main` trên runner `self-hosted, Windows, ddm501-demo` → kiểm chứng Grafana. Runner dùng Python của runtime, xuất đúng Git commit sang release ngoài OneDrive để Docker đọc được binds; giữ secrets, named volumes và models/data/reports. Environment `demo` giới hạn main; PR không chạy trên máy local. `pipeline/ci_local.ps1` là kiểm tra local riêng. Setup theo [OPERATIONS.md](OPERATIONS.md); link và kết quả run thực tế ở [VERIFICATION.md](VERIFICATION.md).
 
 Không thể thay thế phần yêu cầu thành viên có meaningful commits, quyền giảng viên và bài thuyết trình bằng code tự sinh. Xem DEMO_PRESENTATION.md và RUBRIC_MAPPING.md.

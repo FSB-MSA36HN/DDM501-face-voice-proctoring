@@ -1,51 +1,69 @@
-# Kiểm chứng MLOps full pipeline — 27/09/2026 (Asia/Saigon)
+# Kiểm chứng MLOps full pipeline — 28/09/2026 (Asia/Saigon)
 
-Đã chạy trên Docker Desktop Linux engine 29.7.2. Bằng chứng máy đọc được: `reports/verification.json`; báo cáo Evidently: `reports/data-drift.html` và `reports/model-performance.html` (runtime artifacts được gitignore).
+Bằng chứng runtime tại `reports/verification.json`, `monitoring-verification.json`, `coverage.json`, `saas-verification.json`, `paas-verification.json`, `recovery-verification.json`, `github-actions.json`. Các file này/data/models/backups chứa dữ liệu runtime, được gitignore. Tài liệu ghi kết quả thực chạy; không thay thế điểm do giảng viên chấm.
+
+## Pipeline, serving và chất lượng
 
 | Hạng mục | Kết quả thực tế |
 |---|---|
-| Airflow | Run `saas_tenant_scope_20260927`: 6/6 tasks success, bao gồm reload API |
-| Data → training | 282 feature samples; snapshot cố định theo run, fingerprint được kiểm tra trước training |
-| MLflow lineage | Champion version 7; có `dataset_version`, `training_tenant_scope=demo`, `data/snapshot.json`, `data/validation.json` |
-| Evaluation | Voice calibration FAR 16,08%, FRR 14,19%; CV FAR 15,69%, FRR 16,23%; face CV FAR 0,82%, FRR 0%; tất cả dưới gate 20% |
-| Serving | API backend `pretrained`, version 7; tự tải đúng champion sau recreate container |
-| Inference ảnh/WAV | Bootstrap cùng danh tính: allow (score 1/1); khác danh tính: review (face 0,1949, voice 0,1087) |
-| Latency mẫu kiểm tra | Cold request 3.181 ms; request tiếp theo 84 ms — không phải load test/SLA |
-| Prometheus | `biometric-api`, `drift-monitor`, `webhook-worker` scrape UP; 8 series performance (4 metrics × 2 windows) |
-| Grafana | Dashboard được provision, có 12 panels bao gồm Evidently performance và webhook/outbox |
-| Evidently | HTML/JSON drift và classification được tạo thật; simulation reference accuracy 1, current 0 |
-| Alerts | `BiometricDataDrift`, `BiometricPerformanceDegraded` firing và có trong Alertmanager; review-rate phụ thuộc cửa sổ traffic |
-| Tests | 34 passed; core coverage 84,85%; Ruff, Compose local/private config, 8 Prometheus rules và diff checks pass |
+| Airflow | Run `isolated_holdout_20260928`: 6/6 tasks success, RAI trước promotion và reload API |
+| Snapshot/validation | 282 feature rows, training tenant demo; snapshot SHA-256 cố định theo run, validation trước calibration |
+| MLflow | Champion **9**, run `4068c96a6c13401bae5f91ab250cfdcb`; params/metrics/snapshot/validation/evaluation/signature và nested objective runs |
+| Evaluation | Identity-disjoint max-template cosine giống serving; năm partitions, holdout riêng + bốn folds CV nội bộ; margin chọn bằng CV, không dùng holdout |
+| Gates | Calibration/CV/holdout FAR và FRR ≤20%, holdout sample counts và dataset fingerprint; reject invalid/NaN metrics, CLI không bypass |
+| API | Backend `pretrained`, loaded champion 9, readiness pass; giữ model trước nếu reload thất bại |
+| Ảnh/WAV thật | Cùng danh tính ALLOW, score 1/1; khác danh tính REVIEW, face 0,19485 và voice 0,10871; reasons/margins/sensitivity/counterfactual theo policy |
+| Tests | **52 passed**, coverage **88,76%**, Ruff/diff checks pass |
+| Phạm vi coverage | Toàn `app`, toàn `monitoring`, `pipeline.evaluation`, `data_snapshot`, `validate_data`, `promotion_gate`, `responsible_ai_report`; không phải toàn repository |
+| Live SaaS | **19 checks pass**: tenant isolation, consent, expiry/one-time session, genuine/impostor upload, operator review, HMAC callbacks, single exam admission |
 
-## SaaS / portable serving evidence
+### FAR/FRR của champion 9
 
-- `reports/saas-verification.json`: 19 kiểm tra live pass sau rebuild API/worker. Bao gồm tenant isolation, verify genuine/impostor bằng ảnh/WAV, token dùng một lần, consent, REVIEW/reject, callback HMAC và quyền vào bài thi chỉ một lần.
-- `reports/paas-verification.json`: 19 kiểm tra tích hợp trên image `ddm501-saas-serving:local`, weights được đóng gói sẵn, container không có bind mount/volume. Đây là kiểm tra tính di chuyển local với PostgreSQL/MLflow/MinIO dùng chung, không phải đã deploy lên nhà cung cấp PaaS.
-- `reports/load-test.json`: 20 requests, concurrency 2, 0 lỗi, p95 0,244 giây trên CPU đã warm. Không đại diện SLA, cold start, tải nhiều tenant hay độ chính xác biometric thực tế.
-- Migration giữ nguyên dữ liệu cũ; backup trước migration tại `data/backups/pre-saas-20260927.dump`. Kiểm thử migration chạy lại được và không mất hồ sơ cũ.
-- Báo cáo RAI ở `data/reports/responsible-ai.json` tách nhãn human/synthetic. Gate `insufficient_data` do chưa đủ dữ liệu human; không công bố đã đạt demographic fairness.
-- Private overlay đã validate cấu hình; HTTPS, secret thật, máy khách và hạ tầng cloud chưa được triển khai. Hosted camera/microphone cần kiểm thử trình duyệt với người dùng thật; API upload media đã được kiểm chứng.
+| Modality | Threshold | Calibration FAR / FRR | Internal CV FAR / FRR | Reserved holdout FAR / FRR | Holdout genuine / impostor |
+|---|---:|---:|---:|---:|---:|
+| Face | 0,374 | 0% / 0% | 0,56% / 0% | 0% / 0% | 27 / 55 |
+| Voice | 0,221 | 14,73% / 16,39% | 19,60% / 16,47% | 18,18% / 16,67% | 30 / 55 |
 
-## Lỗi phát hiện và đã sửa khi chạy
+Margin ứng viên cố định: 0; 0,002; 0,005; 0,01; 0,02. Chọn margin nhỏ nhất đạt gate bằng internal CV; face 0, voice 0,002. Holdout không nằm trong train/test của bất kỳ inner fold nào. Regression test thay riêng embeddings holdout chứng minh threshold/CV không đổi. Nếu không có margin đạt, giữ kết quả fail để promotion từ chối.
 
-- Run `verification_20260927` bị gate chặn đúng vì voice FRR 20,27%. Mục tiêu calibration ban đầu tối ưu trung bình FAR/FRR, không khớp gate từng chỉ số. Đã chuyển sang tối thiểu hóa chỉ số lỗi lớn nhất, giữ gate 20% và bổ sung kiểm tra CV FAR/FRR; run mới pass. Không xóa run thất bại.
-- Snapshot trước đây chỉ chứa thống kê và không được training dùng trực tiếp. Đã cố định feature rows, kiểm tra fingerprint, dùng chung snapshot cho validation/calibration và log lineage vào MLflow.
-- SpeechBrain vẫn tham chiếu Hub trong hyperparameters dù weights đã nằm local, làm request inference bị chờ. Đã override `pretrained_path` tới thư mục local; inference ảnh/WAV pass sau rebuild.
-- API khởi động từng quay về threshold mặc định: đã tự tải champion và pin artifact theo version. Các phép tính embedding được chuyển sang threadpool để không chặn event loop của metrics/health.
-- Cosine có miền [-1,1], nhưng policy chỉ nhận [0,1]: đã sửa miền hợp lệ và thêm regression test để negative cosine trả mismatch, không gây server error.
+## Grafana và Telegram
 
-## Phạm vi bằng chứng
+| Hạng mục | Kết quả |
+|---|---|
+| Dashboard | **59 panels gồm 7 row headers**, **64 truy vấn** PromQL/SQL/LogQL đã thực thi không lỗi |
+| Monitoring coverage | Readiness/latency/errors, training quality, PSI/Evidently, human/synthetic classification, Registry/calibration/CV/holdout, sessions/review SLA, webhooks, DAG/tasks, RAI, CPU/RAM/network/IO, logs |
+| Metrics/collectors | API/drift/webhook/ops scrape UP; DB/Registry/Airflow/Docker collectors thành công và freshness hợp lệ |
+| Logs/resources | Alloy v1.20.0 → Loki; Docker stats qua read-only socket proxy; theo Compose project |
+| Reports | Tám report HTML/JSON cùng origin Grafana; anonymous 401, authenticated 200 |
+| Human evidence | Report `waiting_for_feedback`, fairness `insufficient_data`; synthetic là nguồn/report/alert riêng |
+| Alert delivery | Alertmanager → ops-monitor → **Telegram đã gửi thành công**, cả kiểm thử trực tiếp và webhook; bot `@ddm501_face_voice_proctoring_bot` |
 
-Đây là kiểm chứng kỹ thuật trên demo local. Face/voice bootstrap được ghép tổng hợp; mẫu cùng danh tính dùng lại media đã enroll. CV chia theo pairs, chưa identity-disjoint. Các kết quả trên không chứng minh độ chính xác trên người dùng mới. Feedback simulation được ghi rõ nguồn tổng hợp; cảnh báo hiện tại là kết quả cố ý tạo lỗi.
+Truy vấn không lỗi không đồng nghĩa mọi series có dữ liệu: human labels, empty review queue và rates khi thiếu traffic có thể No data/NaN. Simulation cố tình tạo drift/performance degradation, được đánh dấu synthetic. Dashboard là quyền quản trị nền tảng; tenant filter áp dụng SQL.
 
-CI/CD workflow đã cấu hình auto-deploy `main`, nhưng chưa push/kiểm chứng job GitHub hoặc self-hosted runner. Alertmanager đã nhận alert; chưa có kênh gửi email/webhook bên ngoài. Các giới hạn này không được tính là đã kiểm chứng.
+## Recovery và deployment
+
+- Restore drill 28/09: `data/backups/ddm501_restore_drill_20260928_102822.dump`, **563.959 bytes**. Restore vào DB tạm riêng, đối chiếu số dòng của tám bảng, xóa DB tạm; không restore đè dữ liệu gốc.
+- Rollback rehearsal thành công **8 → 7 → 8**, readiness được kiểm tra. Đây là bằng chứng trước khi champion 9 đăng ký, không gọi nhầm là rollback version 9.
+- Portable serving image đã kiểm chứng local không có bind mount model, 19 integration checks pass, dùng chung local DB/MLflow/MinIO. Private overlay đã validate config. Chưa phải deployment cloud/customer thực tế.
+- Load smoke trước đó: 20 requests, concurrency 2, 0 lỗi, p95 0,244s trên CPU warm; không suy ra SLA hoặc capacity production.
+
+## CI/CD thực tế
+
+Run [36430718832](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/runs/36430718832) **success**, commit `3e98c770c913b84f30e68e541d044551f966503c`, ngày 28/09/2026. Cả ba jobs **quality, containers, deploy-demo** thành công, gồm kiểm chứng dashboard/protected reports/freshness và upload artifacts. Remote: **52 passed, coverage 88,69%**; local: **52 passed, coverage 88,76%**. Deploy thực tế trên Docker Desktop qua runner Windows, source release ngoài OneDrive, dữ liệu/secrets giữ nguyên; chưa phải public cloud deployment.
+
+Quality: Ruff → compile → dashboard consistency → pytest/coverage ≥80% → Compose config. Containers: build API/UI/drift/ops/Airflow/webhook/legacy trên GitHub Ubuntu. Deploy: trusted-main runner Windows, giữ dữ liệu/secrets/weights → Compose rollout → readiness/monitoring smoke → dashboard queries/protected reports/freshness. Artifacts: `quality-evidence` (JUnit/coverage XML), `deployment-monitoring-evidence`.
+
+Các lỗi thực tế đã sửa: Ruff mới thay đổi defaults (pin phiên bản/cấu hình rules); Windows execution policy chặn Python setup và scripts (runtime Python + process-scoped bypass); Docker Desktop không đọc được file bind từ checkout OneDrive (Git archive đúng SHA sang release ngoài OneDrive, probe file config đọc thành công). Không thay policy toàn máy. Runner chạy theo phiên, cần khởi động lại sau reboot; xem [OPERATIONS.md](OPERATIONS.md).
+
+## Giới hạn còn mở
+
+Evaluation đã identity-disjoint trong tập demo, nhưng face/voice bootstrap ghép tổng hợp; genuine inference dùng lại media enroll. Chưa chứng minh chất lượng trên người dùng mới, fairness demographic, liveness hay audio anti-spoof. Cần consented real data/human labels; không dùng synthetic để đạt human gate. Camera/mic cần browser acceptance thực tế. Team contribution/demo/Q&A cần người thật. Repo đã xác minh public qua GitHub API ngày 28/09. Cloud/TLS/SSO/customer deployment chưa triển khai.
 
 ## Xem trực tiếp
 
-- UI: http://localhost:18501
-- API: http://localhost:18100/docs
-- Airflow: http://localhost:18081
-- MLflow: http://localhost:15030
-- Grafana: http://localhost:13000/d/biometric-overview
-- Prometheus: http://localhost:19090/alerts
-- Alertmanager: http://localhost:19093
+- [Grafana Monitoring Centre](http://localhost:13000/d/biometric-overview)
+- [Portal](http://localhost:18501), [legacy exam](http://localhost:18600), [API docs](http://localhost:18100/docs)
+- [Airflow](http://localhost:18081), [MLflow](http://localhost:15030), [MinIO](http://localhost:19101)
+- [Prometheus targets](http://localhost:19090/targets), [alerts](http://localhost:19090/alerts), [Alertmanager](http://localhost:19093)
+- [Telegram bot](https://t.me/ddm501_face_voice_proctoring_bot)
+- Đầy đủ URL report/exporters/health và trạng thái runtime: [PROJECT_STATE.md](PROJECT_STATE.md).

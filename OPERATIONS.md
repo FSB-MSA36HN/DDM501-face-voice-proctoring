@@ -54,9 +54,11 @@ Quality chạy Ruff, compile, dashboard consistency, pytest + coverage ≥80% v�
 
 Container build dùng GitHub-hosted Ubuntu. Deploy trusted `main` dùng runner Windows `ddm501-local-windows`, labels `self-hosted`, `Windows`, `ddm501-demo`. Environment `demo` giới hạn main. PR không chạy trên runner local. Concurrency bảo đảm một deploy.
 
-Runner ở `data/github-runner` (gitignored), chạy hidden. `DDM501_RUNTIME_ROOT` trỏ repo runtime ban đầu. `prepare_runner_env.py` giữ secrets/project name/DB volumes và absolute paths models/data/reports/logs. Checkout dưới runner `_work` là nguồn code triển khai; không overwrite runtime `.env` bằng `.env.example`.
+Runner ở `data/github-runner` (gitignored), chạy hidden. `DDM501_RUNTIME_ROOT` trỏ repo runtime ban đầu. `prepare_runner_env.py --stage-deployment` xuất đúng commit bằng Git archive vào `%LOCALAPPDATA%/DDM501/deployments/<sha>` ngoài OneDrive; các relative binds cấu hình/DAG/source dùng release này. Script giữ secrets/project name/DB volumes và absolute paths models/data/reports/logs; không overwrite runtime `.env` bằng `.env.example`. Không xóa release đang được container mount. Cách này xử lý lỗi file bind trong checkout OneDrive mà Docker Desktop không đọc được, dù Windows đọc được.
 
 Deploy sử dụng `.venv/Scripts/python.exe` trong runtime đã kiểm chứng, có `python-dotenv` và `requests`; quality dùng Python 3.11 trên Ubuntu. Cách này tránh script cài Python bị execution policy của Windows chặn, không đổi policy hệ thống.
+
+Các bước PowerShell của job dùng `-ExecutionPolicy Bypass` trong riêng process chạy script workflow; exit code Python/Docker được kiểm tra rõ ràng. Không thay policy ở mức máy/người dùng.
 
 Khởi động lại runner sau reboot từ repo runtime:
 

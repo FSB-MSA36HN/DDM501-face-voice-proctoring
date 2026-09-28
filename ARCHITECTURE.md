@@ -8,12 +8,21 @@ flowchart LR
   API -. optional raw .-> S3[(MinIO)]
   AF[Airflow] --> SNAP[versioned snapshot]
   SNAP --> DQ[data quality gate] --> TRAIN[feature pairs + threshold calibration]
-  TRAIN --> EVAL[FAR/FRR promotion gate] --> MF[MLflow Registry]
+  TRAIN --> MF[MLflow candidate + evaluation]
+  MF --> RAI[RAI audit] --> EVAL[FAR/FRR + fingerprint promotion gate]
+  EVAL -->|promote| MF
   MF -->|champion alias| API
   API --> PROM[Prometheus]
   PG --> DM[PSI + Evidently monitor]
   DM --> PROM --> GF[Grafana]
   PROM --> AM[Alertmanager]
+  AM --> OPS[ops-monitor] --> TG[Telegram]
+  MF --> OPS
+  AF --> OPS
+  PG --> OPS --> PROM
+  Docker[Read-only Docker proxy] --> OPS
+  Docker --> Alloy --> Loki --> GF
+  PG --> GF
 ```
 
 ## Responsibilities and flows
@@ -26,11 +35,11 @@ The legacy example runs on its own port/process/database and grants exam admissi
 
 The serving plane validates media, extracts normalized embeddings, compares them with the declared identity, applies the versioned policy, records an immutable event and returns modality scores/reason codes. A separate feedback table holds proctor labels so inference history is not rewritten.
 
-The training plane freezes exact feature rows in a fingerprinted snapshot per DAG run. Validation and calibration consume that same snapshot; retries reuse it. The MLflow run stores the dataset fingerprint, snapshot artifact and validation artifact alongside parameters, metrics and the registered bundle. Threshold selection minimizes the worst of FAR/FRR, then their average as a tie-breaker. Promotion requires both calibration and out-of-fold FAR/FRR <=20%; only then does `champion` move. Pair-level CV can share identities across folds and is not an identity-disjoint biometric benchmark. API startup loads the champion by a pinned version; hot reload keeps the old runtime if Registry is unavailable.
+The training plane freezes exact feature rows in a fingerprinted snapshot per DAG run. Validation and calibration consume that same snapshot; retries reuse it. MLflow stores the fingerprint, snapshot, validation, thresholds and identity evaluation artifacts. Max-template scoring matches serving. Five identity partitions reserve one holdout outside all training/tuning; the remaining four form internal CV. Threshold selection minimizes worst FAR/FRR, then their average; a fixed candidate set chooses the smallest conservative margin meeting the internal CV budget. Holdout is used only for final evaluation. Promotion requires calibration, CV and holdout FAR/FRR <=20%, valid class counts and matching fingerprint after RAI audit. API startup loads the champion by pinned version; hot reload keeps the old runtime on failure. Identity-disjoint demo evaluation still does not prove accuracy on consented real users.
 
 The monitoring plane compares the preceding and current production windows, calculates PSI independently, generates an Evidently report, exports ML and system metrics, visualizes them in Grafana and routes threshold breaches to Alertmanager. `pipeline/simulate_drift.py` exercises the API rather than writing directly to the database.
 
-With `--with-feedback`, simulation creates explicit synthetic labels under reviewer `synthetic-simulation` to exercise performance degradation. These are technical test observations, not human-reviewed biometric accuracy evidence. Evidently ClassificationPreset compares two labelled windows and exports accuracy/precision/recall/F1 to Prometheus.
+With `--with-feedback`, simulation creates explicit synthetic labels under reviewer `synthetic-simulation` to exercise performance degradation. Evidently compares two non-overlapping labelled windows and exports accuracy/precision/recall/F1/FAR/FRR separately for human and synthetic sources. Insufficient human labels produce waiting status and NaN metrics. Grafana combines Prometheus, PostgreSQL and Loki, with authenticated HTML/JSON reports at the same origin. ops-monitor collects Registry, Airflow, RAI, readiness and Docker resources; Alertmanager notifications are forwarded to Telegram with retries on transport failure.
 
 ## Technology choices and trade-offs
 
