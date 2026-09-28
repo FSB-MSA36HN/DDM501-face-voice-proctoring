@@ -63,7 +63,7 @@ def build():
           'Snapshot bất biến theo DAG run; fingerprint SHA-256.\nTraining scope mặc định tenant demo.\nReject: invalid/zero vector, inconsistent dimension, duplicates.\nMLflow lưu snapshot, validation, thresholds và evaluation folds.',
           '1 phút. Không đưa tenant khác vào training mặc định. Bộ bootstrap LFW/Speech Commands ghép tổng hợp, không phải một tập face+voice thật có consent từ cùng người.')
     slide('Calibration và lựa chọn model',
-          'Max-template cosine giống cách serving so sánh.\nFive-fold identity split; holdout không dùng để tune threshold.\n1.151 thresholds × 3 objectives × 2 modalities.\nGate kiểm tra calibration, CV, holdout FAR/FRR và sample counts.',
+          'Max-template cosine giống cách serving so sánh.\nFive-way identity split: holdout riêng + 4 folds CV nội bộ.\n1.151 thresholds × 3 objectives × 2 modalities.\nGate kiểm tra calibration, CV, holdout FAR/FRR và sample counts.',
           '1,5 phút. Mở evaluation/identity-disjoint.json và nested MLflow runs. CV bên trong phần calibration, fold 0 giữ ngoài tune. Đổi alias champion chỉ sau RAI audit và gate; không nới gate để có DAG xanh.')
     slide('SaaS serving và demo tích hợp',
           'Tenant-scoped API keys; role operator / integration / platform.\nSession có expiry, consent và token dùng một lần.\nBackend đối tác nhận callback HMAC + sequence + dedup.\nDemo: genuine → ALLOW; impostor → REVIEW → operator quyết định.',

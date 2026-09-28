@@ -38,7 +38,7 @@ Bot: `@ddm501_face_voice_proctoring_bot`. `.env` giữ `TELEGRAM_BOT_TOKEN`, `TE
 ## Kiểm chứng và recovery
 
 ```powershell
-python pipeline/verify_stack.py --dag-run grafana_completion_20260928 --inference --require-alerts
+python pipeline/verify_stack.py --dag-run isolated_holdout_20260928 --inference --require-alerts
 python pipeline/verify_monitoring_centre.py --send-alert
 python pipeline/verify_saas.py
 python pipeline/verify_recovery.py --rollback
@@ -55,6 +55,8 @@ Quality chạy Ruff, compile, dashboard consistency, pytest + coverage ≥80% v�
 Container build dùng GitHub-hosted Ubuntu. Deploy trusted `main` dùng runner Windows `ddm501-local-windows`, labels `self-hosted`, `Windows`, `ddm501-demo`. Environment `demo` giới hạn main. PR không chạy trên runner local. Concurrency bảo đảm một deploy.
 
 Runner ở `data/github-runner` (gitignored), chạy hidden. `DDM501_RUNTIME_ROOT` trỏ repo runtime ban đầu. `prepare_runner_env.py` giữ secrets/project name/DB volumes và absolute paths models/data/reports/logs. Checkout dưới runner `_work` là nguồn code triển khai; không overwrite runtime `.env` bằng `.env.example`.
+
+Deploy sử dụng `.venv/Scripts/python.exe` trong runtime đã kiểm chứng, có `python-dotenv` và `requests`; quality dùng Python 3.11 trên Ubuntu. Cách này tránh script cài Python bị execution policy của Windows chặn, không đổi policy hệ thống.
 
 Khởi động lại runner sau reboot từ repo runtime:
 

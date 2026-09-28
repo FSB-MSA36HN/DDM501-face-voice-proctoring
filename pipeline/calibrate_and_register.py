@@ -123,7 +123,7 @@ def main() -> None:
         grouped[row["modality"]].append({"person_id": row["person_id"], "embedding": embedding})
     metrics, thresholds, evaluations = {}, {}, {}
     for modality in ("face", "voice"):
-        threshold, result, evaluation = identity_evaluation(grouped[modality])
+        threshold, result, evaluation = identity_evaluation(grouped[modality], max_error_rate=float(os.getenv('MAX_BIOMETRIC_ERROR_RATE', '.20')))
         evaluations[modality] = evaluation
         thresholds[f"{modality}_threshold"] = threshold
         metrics.update({f"{modality}_{key}": value for key, value in result.items()})
@@ -140,7 +140,8 @@ def main() -> None:
                 "dataset_samples": len(raw),
                 "training_tenant_scope": snapshot.get("tenant_scope", "demo"),
                 "threshold_grid_min": -0.2, "threshold_grid_max": 0.95,
-                "threshold_grid_steps": 1151, "objective": "minimize_worst_far_frr",
+                "threshold_grid_steps": 1151, "objective": "minimize_worst_far_frr_then_minimum_cv_gate_margin",
+                "selection_method": "internal_cv_only_holdout_reserved",
             })
             mlflow.log_metrics(metrics)
             mlflow.log_params({**thresholds, 'evaluation_method': 'identity-disjoint-max-template'})

@@ -62,9 +62,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           clean: false
-      - uses: actions/setup-python@v5
-        with: {python-version: "3.11"}
-      - run: python -m pip install python-dotenv==1.1.0 requests==2.32.3
+      - name: Use the authorized runtime Python
+        run: |
+          $runtimePython = Join-Path $env:DDM501_RUNTIME_ROOT '.venv/Scripts/python.exe'
+          if (-not (Test-Path -LiteralPath $runtimePython)) { throw 'Runtime Python is missing' }
+          & $runtimePython -c "import sys, dotenv, requests; assert sys.version_info >= (3, 10); print(sys.version)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Split-Path -Parent $runtimePython | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Reuse authorized local secrets and persistence
         run: python pipeline/prepare_runner_env.py
       - run: docker compose config --quiet

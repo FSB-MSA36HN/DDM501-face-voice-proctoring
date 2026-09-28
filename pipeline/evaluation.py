@@ -39,39 +39,62 @@ def select_trial(trials, objective='minimax'):
     raise ValueError('Unknown objective')
 
 
-def identity_evaluation(rows, folds=5):
+def identity_evaluation(rows, folds=5, max_error_rate=.20):
+    if folds < 3 or not 0 <= max_error_rate <= 1:
+        raise ValueError('At least three partitions and a valid error budget required')
     people = sorted({str(row['person_id']) for row in rows})
     if len(people) < 10:
         raise ValueError('Identity-disjoint evaluation requires at least ten identities')
     partitions = np.array_split(np.random.default_rng(501).permutation(people), folds)
+    holdout_ids = set(partitions[0])
+    calibration = [r for r in rows if str(r['person_id']) not in holdout_ids]
     results = []
-    for index, held_out in enumerate(partitions):
+    validation_scores = []
+    for index, held_out in enumerate(partitions[1:], start=1):
         held_out = set(held_out)
-        train = [r for r in rows if str(r['person_id']) not in held_out]
-        test = [r for r in rows if str(r['person_id']) in held_out]
+        train = [r for r in calibration if str(r['person_id']) not in held_out]
+        test = [r for r in calibration if str(r['person_id']) in held_out]
         positive, negative = policy_scores(train)
         trials = threshold_trials(positive, negative)
         best = select_trial(trials)
         test_positive, test_negative = policy_scores(test)
         if min(len(test_positive), len(test_negative)) < 5:
             raise ValueError('Insufficient held-out identity comparisons')
+        validation_scores.append((best['threshold'],test_positive,test_negative))
         results.append({'fold': index, 'train_identities': sorted({str(r['person_id']) for r in train}),
                         'test_identities': sorted(held_out), 'threshold': best['threshold'],
                         'far': float(np.mean(test_negative >= best['threshold'])),
                         'frr': float(np.mean(test_positive < best['threshold'])),
                         'positive_pairs': len(test_positive), 'negative_pairs': len(test_negative)})
-    # Keep fold zero untouched as a documented holdout for the registered threshold.
-    held_out = set(partitions[0])
-    train_rows = [r for r in rows if str(r['person_id']) not in held_out]
-    positive, negative = policy_scores(train_rows)
+    # Select the smallest conservative adjustment meeting the declared CV budget.
+    # Holdout identities never enter any fold's training or margin selection.
+    margin_trials = []
+    for margin in (0., .002, .005, .01, .02):
+        far = float(np.mean([np.mean(n >= t+margin) for t,p,n in validation_scores]))
+        frr = float(np.mean([np.mean(p < t+margin) for t,p,n in validation_scores]))
+        margin_trials.append({'margin':margin,'cv_far':far,'cv_frr':frr,
+                              'passed':max(far,frr) <= max_error_rate})
+    selection = next((t for t in margin_trials if t['passed']),margin_trials[0])
+    margin = selection['margin']
+    for result, (threshold, p, n) in zip(results,validation_scores,strict=True):
+        result.update(threshold=threshold+margin,far=float(np.mean(n >= threshold+margin)),
+                      frr=float(np.mean(p < threshold+margin)))
+    positive, negative = policy_scores(calibration)
     trials = threshold_trials(positive, negative)
     best = select_trial(trials)
-    metrics = {**{k:best[k] for k in ['far', 'frr']},
+    threshold = best['threshold'] + margin
+    holdout_positive, holdout_negative = policy_scores([r for r in rows if str(r['person_id']) in holdout_ids])
+    if min(len(holdout_positive),len(holdout_negative)) < 5:
+        raise ValueError('Insufficient registration holdout comparisons')
+    metrics = {'far':float(np.mean(negative >= threshold)), 'frr':float(np.mean(positive < threshold)),
                'positive_pairs': len(positive), 'negative_pairs': len(negative),
-               'cv_far': float(np.mean([r['far'] for r in results])),
-               'cv_frr': float(np.mean([r['frr'] for r in results])),
-               'holdout_far': results[0]['far'], 'holdout_frr': results[0]['frr'],
-               'holdout_positive_pairs': results[0]['positive_pairs'],
-               'holdout_negative_pairs': results[0]['negative_pairs'], 'cv_folds': folds}
-    return best['threshold'], metrics, {'method': 'identity-disjoint-max-template',
-                                      'registration_holdout_fold': 0, 'folds': results, 'trials': trials}
+               'cv_far':selection['cv_far'],'cv_frr':selection['cv_frr'],
+               'holdout_far':float(np.mean(holdout_negative >= threshold)),
+               'holdout_frr':float(np.mean(holdout_positive < threshold)),
+               'holdout_positive_pairs':len(holdout_positive),'holdout_negative_pairs':len(holdout_negative),
+               'cv_folds':folds-1,'safety_margin':margin}
+    return threshold, metrics, {'method':'identity-disjoint-max-template',
+                                'registration_holdout_fold':0,'holdout_identities':sorted(holdout_ids),
+                                'selection_method':'minimum_margin_meeting_internal_cv_budget',
+                                'max_error_rate':max_error_rate,'margin_trials':margin_trials,
+                                'folds':results,'trials':trials}
