@@ -71,15 +71,19 @@ jobs:
           Split-Path -Parent $runtimePython | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Reuse authorized local secrets and persistence
         run: |
-          python pipeline/prepare_runner_env.py
+          $deployPath = python pipeline/prepare_runner_env.py --stage-deployment
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "DDM501_DEPLOY_PATH=$deployPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: |
           docker compose config --quiet
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.DDM501_DEPLOY_PATH }}
       - run: |
           docker compose up -d --build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.DDM501_DEPLOY_PATH }}
       - name: Smoke test
+        working-directory: ${{ env.DDM501_DEPLOY_PATH }}
         run: |
           for ($attempt = 0; $attempt -lt 30; $attempt++) {
             try {
@@ -97,6 +101,7 @@ jobs:
           $null = Invoke-WebRequest -UseBasicParsing http://localhost:19090/-/ready
           $null = Invoke-RestMethod http://localhost:13000/api/health
       - name: Verify Grafana dashboard and protected reports
+        working-directory: ${{ env.DDM501_DEPLOY_PATH }}
         run: |
           python pipeline/verify_monitoring_centre.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -104,4 +109,4 @@ jobs:
         if: always()
         with:
           name: deployment-monitoring-evidence
-          path: reports/monitoring-verification.json
+          path: ${{ env.DDM501_DEPLOY_PATH }}/reports/monitoring-verification.json
