@@ -1,5 +1,15 @@
 # DDM501 — Face + Voice Verification SaaS MVP
 
+[![CI](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/workflows/ci.yml/badge.svg)](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/workflows/ci.yml)
+
+## Monitoring Centre
+
+Mở **http://localhost:13000/d/biometric-overview** (`admin` / `admin` trên demo loopback). Grafana tập trung service health, quality, PSI/Evidently, human/synthetic performance, Registry/holdout, review queue, webhook, Airflow/RAI, CPU/RAM/network/IO và Docker logs. Report HTML/JSON cùng origin yêu cầu đăng nhập. Cảnh báo qua bot Telegram `@ddm501_face_voice_proctoring_bot`.
+
+[Vận hành Grafana/Telegram/CI](OPERATIONS.md) · [mapping tiêu chí và pipeline](RUBRIC_MAPPING.md) · [bằng chứng thực tế](VERIFICATION.md) · [capacity/cost](SCALABILITY_COST.md) · [slide thuyết trình](docs/DDM501_Face_Voice_Proctoring.pptx).
+
+Calibration dùng identity-disjoint CV + holdout và max-template scoring giống serving; RAI audit chạy trước gate/promotion. Performance human không chứa nhãn simulation. Kiểm chứng monitoring: `python pipeline/verify_monitoring_centre.py --send-alert`.
+
 ## SaaS / private deployment checkpoint
 
 Project hiện có tenant isolation, API key theo vai trò, hosted verification session dùng một lần, consent, manual review, webhook ký HMAC có retry, audit và portal quản lý tập trung. Kiến trúc PaaS được giả lập bằng Docker local; chưa triển khai dịch vụ cloud thực tế.

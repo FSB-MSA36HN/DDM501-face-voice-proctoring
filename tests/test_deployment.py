@@ -28,3 +28,21 @@ def test_deploy_rejects_missing_or_unsafe_secrets(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="URL-safe"):
         prepare(tmp_path)
     assert not (tmp_path / ".env").exists()
+
+
+def test_runner_preserves_runtime_values_and_absolute_paths(tmp_path):
+    from dotenv import dotenv_values
+    from pipeline.prepare_runner_env import prepare as prepare_runner
+
+    runtime, destination = tmp_path / 'runtime folder', tmp_path / 'checkout'
+    runtime.mkdir()
+    destination.mkdir()
+    (runtime / '.env').write_text("API_KEY='secret # with space'\nPOSTGRES_PASSWORD='unchanged'\nCOMPOSE_PROJECT_NAME=existing\n")
+    original = (runtime / '.env').read_bytes()
+    prepare_runner(destination, runtime)
+    config = dotenv_values(destination / '.env')
+    assert config['API_KEY'] == 'secret # with space'
+    assert config['POSTGRES_PASSWORD'] == 'unchanged'
+    assert config['COMPOSE_PROJECT_NAME'] == 'existing'
+    assert config['DATA_PATH'] == (runtime / 'data').as_posix()
+    assert (runtime / '.env').read_bytes() == original

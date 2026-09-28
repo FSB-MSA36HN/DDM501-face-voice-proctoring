@@ -34,18 +34,21 @@ Remote English examinations need a low-friction way to check that the enrolled c
 
 | Level | Metric | Target / gate |
 |---|---|---|
-| Business | automatically allowed genuine sessions | baseline after consented pilot; never optimize without false-accept constraint |
+| Business | automatically allowed genuine sessions | proposed pilot ≥70%, with no increase in the agreed false-accept bound; measure against consented baseline |
+| Business | manual review effort per 1,000 sessions | proposed pilot ≥50% reduction; measure operator minutes before/after |
 | Business | reviewed-event turnaround | < 15 minutes during exams |
 | Model | FAR and FRR per modality | each <= 20% demo promotion gate; stricter threshold set from pilot risk policy |
-| Model | quality-slice accuracy gap | <= 10 percentage points with >=20 reviewed cases per slice |
+| Model | quality-slice accuracy gap | <= 10 percentage points with >=20 human-reviewed cases and >=5 of each class per comparable slice |
 | Data | invalid/duplicate/inconsistent embeddings | 0 entering training |
 | Drift | PSI per production feature | investigate >=0.1; alert >0.2 for 2 minutes |
 | System | availability | >=99.5% pilot target |
 | System | p95 verification latency | <=2 seconds excluding first model warm-up |
-| Engineering | core test coverage | >80% |
+| Engineering | declared API/monitoring/evaluation coverage | >=80%; whole `app`, whole `monitoring`, snapshot/evaluation/validation/promotion/RAI modules |
 | Integration | accepted duplicate session submissions / cross-tenant accesses | 0 in integration tests |
 | Integration | webhook delivery | at-least-once with retry; receiver deduplicates, 5 attempts before operator intervention |
 
 ## Constraints and non-goals
 
 CPU-first local demo, 50–100 synthetic cross-dataset identities, no demographic ground truth and no claim of production biometric accuracy. `REVIEW` always requires a person. PAD/deepfake detection, high-concurrency scaling and regulatory certification are explicitly outside the MVP.
+
+Capacity equations, assumptions and a cost worksheet are in [SCALABILITY_COST.md](SCALABILITY_COST.md). Business targets are proposed requirements, not achieved customer outcomes.

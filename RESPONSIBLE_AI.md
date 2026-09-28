@@ -4,13 +4,15 @@ This is decision support. A mismatch becomes `REVIEW`, never an automatic accusa
 
 ## Fairness
 
-`pipeline/responsible_ai_report.py` measures accuracy/FAR/FRR across low, medium and high capture-quality slices after proctors submit labels. A >10-point accuracy gap is flagged for review once each comparable slice has at least 20 labels. This detects an operational harm pathway (devices/network/environment), but it is not demographic fairness. The synthetic LFW + Speech Commands pairing has no valid demographic labels, so the project makes no demographic parity claim. A production pilot must collect optional, consented, purpose-limited evaluation labels and report intersectional FAR/FRR with confidence intervals before launch.
+`pipeline/responsible_ai_report.py` measures accuracy/FAR/FRR across low, medium and high capture-quality slices after proctors submit labels. A >10-point accuracy gap is flagged for review once each comparable human slice has at least 20 labels, including at least five genuine and five impostor cases. The report supplies Wilson 95% confidence intervals for class-conditional rates. This detects an operational harm pathway (devices/network/environment), but it is not demographic fairness. The synthetic LFW + Speech Commands pairing has no valid demographic labels, so the project makes no demographic parity claim. A production pilot must collect optional, consented, purpose-limited evaluation labels and report intersectional FAR/FRR with confidence intervals before launch.
 
 Mitigations include multi-sample enrollment, explicit image/audio quality gates, two modalities, no automatic rejection, slice monitoring, accessible re-capture and manual appeal.
 
 ## Explainability
 
-Every response and audit event contains face/voice scores, quality values, thresholds, model version and human-readable policy reason codes. These local, faithful explanations are more appropriate for a deterministic threshold policy than post-hoc SHAP/LIME. The MLflow artifact records threshold selection and evaluation metrics.
+Verification responses include scores, quality, thresholds, model version, reason codes, score margins, threshold sensitivity ±0.05, and single-modality counterfactuals. Counterfactuals preserve the other modality and quality constraints; improving a score alone may still yield REVIEW. Stored events preserve scores/quality/reasons/version but historical events do not contain the threshold, so Grafana does not infer historical margins. These are faithful explanations of a deterministic threshold policy; they do not explain the causal internals of the pretrained encoders. The MLflow artifact records threshold selection, identity folds and evaluation metrics.
+
+RAI audit precedes promotion in the DAG. `REQUIRE_HUMAN_FAIRNESS=true` makes insufficient/rejected human evidence block promotion; the course demo defaults to false and shows insufficient evidence explicitly. Synthetic feedback never supplies human performance/fairness metrics.
 
 ## Privacy and ethics
 

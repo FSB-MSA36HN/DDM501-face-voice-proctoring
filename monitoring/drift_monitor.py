@@ -25,35 +25,51 @@ EVIDENTLY_SUCCESS = Gauge("biometric_evidently_report_success", "1 when the late
 PERFORMANCE_SUCCESS = Gauge("biometric_performance_report_success", "1 when the latest performance report succeeded")
 PERFORMANCE_SAMPLES = Gauge("biometric_performance_samples", "Human-reviewed events available for performance")
 PERFORMANCE = Gauge("biometric_model_performance", "Evidently classification quality on reviewed events", ["metric", "window"])
-PERFORMANCE_METRICS = ("accuracy", "precision", "recall", "f1")
+PERFORMANCE_METRICS = ("accuracy", "precision", "recall", "f1", "far", "frr")
+SOURCE_PERFORMANCE = Gauge("biometric_reviewed_performance", "Reviewed performance separated by label source", ["source", "metric", "window"])
+SOURCE_SUCCESS = Gauge("biometric_reviewed_report_success", "Report validity by label source", ["source"])
+SOURCE_SAMPLES = Gauge("biometric_reviewed_samples", "Reviewed rows by label source", ["source"])
 
 
-def load_feedback(database_url: str, limit: int) -> pd.DataFrame:
+def load_feedback(database_url: str, limit: int, source: str = "human") -> pd.DataFrame:
+    if source not in {"human", "synthetic"}:
+        raise ValueError("Unknown feedback source")
     engine = create_engine(database_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
             rows = connection.execute(text("""
                 SELECT e.created_at, e.accepted AS prediction, f.is_genuine AS target
                 FROM verification_events e JOIN verification_feedback f ON f.event_id = e.id
+                WHERE (:source = 'synthetic' AND f.reviewer = 'synthetic-simulation')
+                   OR (:source = 'human' AND f.reviewer != 'synthetic-simulation')
                 ORDER BY e.created_at DESC, e.id DESC LIMIT :limit
-            """), {"limit": limit}).mappings().all()
+            """), {"limit": limit, "source": source}).mappings().all()
         return pd.DataFrame(rows, columns=["created_at", "prediction", "target"])
     finally:
         engine.dispose()
 
 
-def monitor_performance(database_url: str, window_size: int, path: Path) -> dict:
+def monitor_performance(database_url: str, window_size: int, path: Path, source: str = "human") -> dict:
     """Compare disjoint windows of reviewed decisions; unlabelled events are excluded."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    PERFORMANCE_SUCCESS.set(0)
-    PERFORMANCE_SAMPLES.set(0)
+    if window_size < 2:
+        raise ValueError("Performance window must contain at least two rows")
+    SOURCE_SUCCESS.labels(source=source).set(0)
+    SOURCE_SAMPLES.labels(source=source).set(0)
+    if source == "human":
+        PERFORMANCE_SUCCESS.set(0)
+        PERFORMANCE_SAMPLES.set(0)
     for metric in PERFORMANCE_METRICS:
         for window in ("reference", "current"):
-            PERFORMANCE.labels(metric=metric, window=window).set(math.nan)
-    summary = {"status": "waiting_for_feedback", "required_samples": 2 * window_size}
+            SOURCE_PERFORMANCE.labels(source=source, metric=metric, window=window).set(math.nan)
+            if source == "human":
+                PERFORMANCE.labels(metric=metric, window=window).set(math.nan)
+    summary = {"status": "waiting_for_feedback", "label_source": source, "required_samples": 2 * window_size}
     try:
-        frame = load_feedback(database_url, 2 * window_size)
-        PERFORMANCE_SAMPLES.set(len(frame))
+        frame = load_feedback(database_url, 2 * window_size, source)
+        SOURCE_SAMPLES.labels(source=source).set(len(frame))
+        if source == "human":
+            PERFORMANCE_SAMPLES.set(len(frame))
         summary["samples"] = len(frame)
         if len(frame) >= 2 * window_size:
             reference, current = split_windows(frame, window_size)
@@ -77,14 +93,21 @@ def monitor_performance(database_url: str, window_size: int, path: Path) -> dict
                               if item["metric"] == "ClassificationQualityMetric")
                 summary["quality"] = {}
                 for window in ("reference", "current"):
+                    part = reference if window == "reference" else current
                     values = {metric: float(result[window][metric])
-                              for metric in PERFORMANCE_METRICS}
+                              for metric in PERFORMANCE_METRICS[:4]}
+                    impostors, genuine = part[part.target == 0], part[part.target == 1]
+                    values.update(far=float(impostors.prediction.mean()), frr=float(1 - genuine.prediction.mean()))
                     summary["quality"][window] = values
                     for metric, value in values.items():
-                        PERFORMANCE.labels(metric=metric, window=window).set(value)
+                        SOURCE_PERFORMANCE.labels(source=source, metric=metric, window=window).set(value)
+                        if source == "human":
+                            PERFORMANCE.labels(metric=metric, window=window).set(value)
                 report.save_html(str(path))
                 summary["status"] = "ok"
-                PERFORMANCE_SUCCESS.set(1)
+                SOURCE_SUCCESS.labels(source=source).set(1)
+                if source == "human":
+                    PERFORMANCE_SUCCESS.set(1)
     except Exception:
         LOGGER.exception("Evidently performance report failed")
         summary["status"] = "error"
@@ -132,8 +155,10 @@ def load_events(database_url: str, limit: int) -> tuple[pd.DataFrame, float | No
         performance = connection.execute(text("""
             SELECT AVG(CASE WHEN e.accepted = f.is_genuine THEN 1.0 ELSE 0.0 END) AS accuracy
             FROM verification_events e JOIN verification_feedback f ON f.event_id = e.id
+            WHERE f.reviewer != 'synthetic-simulation'
         """)).scalar()
-    return pd.DataFrame(rows), None if performance is None else float(performance)
+    engine.dispose()
+    return pd.DataFrame(rows, columns=["created_at", *FEATURES]), None if performance is None else float(performance)
 
 
 def write_evidently(reference: pd.DataFrame, current: pd.DataFrame, report_path: Path) -> bool:
@@ -167,6 +192,15 @@ def run_once() -> dict:
         database_url, int(os.getenv("PERFORMANCE_WINDOW_SIZE", "100")),
         report_path.with_name("model-performance.html"),
     )
+    synthetic_performance = monitor_performance(
+        database_url, int(os.getenv("PERFORMANCE_WINDOW_SIZE", "100")),
+        report_path.with_name("synthetic-performance.html"), "synthetic",
+    )
+    EVIDENTLY_SUCCESS.set(0)
+    for feature in FEATURES:
+        PSI.labels(feature=feature).set(math.nan)
+    DRIFT_SHARE.set(math.nan)
+    ACCURACY.set(math.nan)
     frame, accuracy = load_events(database_url, window_size * 4)
     reference, current = split_windows(frame, window_size)
     values = {feature: population_stability_index(reference[feature], current[feature]) for feature in FEATURES}
@@ -186,6 +220,7 @@ def run_once() -> dict:
         "psi": values, "drifted_share": drifted / len(FEATURES),
         "feedback_accuracy": accuracy, "evidently_report_success": evidently_success,
         "performance": performance,
+        "synthetic_performance": synthetic_performance,
     }
     report_path.with_suffix(".json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary

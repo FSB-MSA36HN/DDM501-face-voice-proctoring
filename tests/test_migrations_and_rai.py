@@ -29,4 +29,5 @@ def test_fairness_report_does_not_claim_human_fairness_from_synthetic_labels():
     assert build_report(rows)["gate"] == "insufficient_data"
     for row in rows:
         row["label_source"] = "human"
+        row['genuine_count'] = row['impostor_count'] = 50
     assert build_report(rows)["gate"] == "review"

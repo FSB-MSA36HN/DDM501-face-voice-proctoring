@@ -1,6 +1,35 @@
 groups:
   - name: biometric-ml
     rules:
+      - alert: BiometricSyntheticPerformanceDegraded
+        expr: biometric_reviewed_performance{source="synthetic",metric="accuracy",window="current"} < 0.8 and on(source) biometric_reviewed_report_success{source="synthetic"} == 1
+        for: 2m
+        labels: {severity: info, evidence: synthetic_demo}
+        annotations:
+          summary: "Synthetic monitoring scenario degraded; this is not human accuracy"
+      - alert: PlatformServiceUnavailable
+        expr: biometric_service_health == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Platform service readiness failed"
+      - alert: OperationalCollectorFailed
+        expr: biometric_ops_collection_success == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Operational telemetry collection failed"
+      - alert: TrainingDataInvalid
+        expr: biometric_training_data_valid == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Training feature data failed validation"
+      - alert: TelegramDeliveryFailed
+        expr: increase(biometric_alert_notifications_total{outcome="failure"}[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Telegram notification failed; check configured credentials and connectivity"
       - alert: WebhookDeliveryFailed
         expr: biometric_webhook_backlog{status="failed"} > 0
         for: 1m

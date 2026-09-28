@@ -19,3 +19,6 @@ services:
       WEBHOOK_MASTER_KEY: ${WEBHOOK_MASTER_KEY:?Set the same secret as API}
   legacy-demo:
     profiles: [demo]
+  ops-monitor:
+    environment:
+      OPS_DISABLED_PROBES: legacy

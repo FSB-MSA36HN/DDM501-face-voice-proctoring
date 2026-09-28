@@ -71,6 +71,8 @@ def test_model_promotion_gate():
         metrics.update({
             f"{modality}_far": 0.05, f"{modality}_frr": 0.10,
             f"{modality}_cv_far": 0.07, f"{modality}_cv_frr": 0.12,
+            f"{modality}_holdout_far": 0.07, f"{modality}_holdout_frr": 0.12,
+            f"{modality}_holdout_positive_pairs": 20, f"{modality}_holdout_negative_pairs": 50,
             f"{modality}_positive_pairs": 20, f"{modality}_negative_pairs": 50,
         })
     assert gate(metrics) == []

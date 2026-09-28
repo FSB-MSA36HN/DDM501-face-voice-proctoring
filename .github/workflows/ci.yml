@@ -2,6 +2,7 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    paths-ignore: ['**/*.md', 'docs/**']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -24,7 +25,15 @@ jobs:
       - run: pip install -r requirements-api.txt -r requirements-monitoring.txt pytest pytest-cov ruff
       - run: ruff check api pipeline monitoring tests legacy_demo
       - run: python -m compileall -q api pipeline monitoring airflow/dags ui legacy_demo
-      - run: python -m pytest --cov=app.auth --cov=app.saas --cov=app.webhooks --cov=app.migrations --cov=app.biometrics --cov=app.decision --cov=pipeline.validate_data --cov=pipeline.promotion_gate --cov=monitoring.drift_monitor --cov-report=term-missing --cov-fail-under=80
+      - run: python pipeline/build_dashboard.py && git diff --exit-code monitoring/grafana/dashboards/biometric-overview.json
+      - run: python -m pytest --cov=app --cov=pipeline.evaluation --cov=pipeline.data_snapshot --cov=pipeline.validate_data --cov=pipeline.promotion_gate --cov=pipeline.responsible_ai_report --cov=monitoring --cov-report=term-missing --cov-report=xml --junitxml=reports/tests.xml --cov-fail-under=80
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-evidence
+          path: |
+            coverage.xml
+            reports/tests.xml
       - run: cp .env.example .env && docker compose config --quiet
 
   containers:
@@ -33,13 +42,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cp .env.example .env
-      - run: docker compose build api ui drift-monitor airflow-scheduler webhook-worker legacy-demo
+      - run: docker compose build api ui drift-monitor ops-monitor airflow-scheduler webhook-worker legacy-demo
 
   deploy-demo:
+    defaults:
+      run:
+        shell: powershell
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
-    runs-on: [self-hosted, linux, ddm501-demo]
+    runs-on: [self-hosted, Windows, ddm501-demo]
     needs: containers
     environment: demo
     concurrency:
@@ -52,26 +64,33 @@ jobs:
           clean: false
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Configure secrets
-        env:
-          DEPLOY_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          DEPLOY_API_KEY: ${{ secrets.API_KEY }}
-        shell: bash
-        run: python pipeline/prepare_deploy_env.py
+      - run: python -m pip install python-dotenv==1.1.0 requests==2.32.3
+      - name: Reuse authorized local secrets and persistence
+        run: python pipeline/prepare_runner_env.py
       - run: docker compose config --quiet
       - run: docker compose up -d --build
       - name: Smoke test
-        shell: bash
+        shell: powershell
         run: |
-          for attempt in {1..30}; do
-            curl --fail http://localhost:18100/health && exit 0
-            sleep 10
-          done
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            try {
+              $null = Invoke-RestMethod http://localhost:18100/ready
+              exit 0
+            } catch { Start-Sleep -Seconds 10 }
+          }
           docker compose ps
           exit 1
       - name: Monitoring smoke test
-        shell: bash
+        shell: powershell
         run: |
-          curl --fail --retry 12 --retry-delay 5 --retry-all-errors http://localhost:18001/metrics
-          curl --fail http://localhost:19090/-/ready
-          curl --fail http://localhost:13000/api/health
+          $null = Invoke-WebRequest -UseBasicParsing http://localhost:18001/metrics
+          $null = Invoke-WebRequest -UseBasicParsing http://localhost:18003/metrics/
+          $null = Invoke-WebRequest -UseBasicParsing http://localhost:19090/-/ready
+          $null = Invoke-RestMethod http://localhost:13000/api/health
+      - name: Verify Grafana dashboard and protected reports
+        run: python pipeline/verify_monitoring_centre.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-monitoring-evidence
+          path: reports/monitoring-verification.json

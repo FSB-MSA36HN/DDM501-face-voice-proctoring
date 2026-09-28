@@ -11,6 +11,10 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
+  - job_name: ops-monitor
+    metrics_path: /metrics/
+    static_configs:
+      - targets: ["ops-monitor:8003"]
   - job_name: webhook-worker
     static_configs:
       - targets: ["webhook-worker:8002"]

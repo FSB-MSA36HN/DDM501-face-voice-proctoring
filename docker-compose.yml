@@ -61,7 +61,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin_dev_only}
     command: >-
       sh -c "pip install --no-cache-dir psycopg2-binary boto3 &&
-      mlflow server --host 0.0.0.0 --port 5000
+      mlflow server --host 0.0.0.0 --port 5000 --workers ${MLFLOW_WORKERS:-1}
       --backend-store-uri postgresql+psycopg2://${POSTGRES_USER:-biometric}:${POSTGRES_PASSWORD:-biometric_dev_only}@postgres:5432/mlflow
       --default-artifact-root s3://${MLFLOW_BUCKET:-mlflow}/"
     ports: ["127.0.0.1:15030:5000"]
@@ -81,7 +81,7 @@ services:
     user: "0:0"
     environment:
       MODEL_DIR: /models
-    volumes: ["./models:/models"]
+    volumes: ["${MODELS_PATH:-./models}:/models"]
     restart: "no"
 
   api:
@@ -100,7 +100,7 @@ services:
       ENABLE_SIMULATION: ${ENABLE_SIMULATION:-true}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:18100}
       WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-legacy-demo,localhost,127.0.0.1}
-    volumes: ["./models:/models", "./reports:/reports:ro"]
+    volumes: ["${MODELS_PATH:-./models}:/models", "${REPORTS_PATH:-./reports}:/reports:ro"]
     ports: ["127.0.0.1:18100:8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -119,6 +119,11 @@ services:
       API_URL: http://api:8000
       PORTAL_LINKS_JSON: ${PORTAL_LINKS_JSON:-}
     ports: ["127.0.0.1:18501:8501"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   webhook-worker:
@@ -147,7 +152,7 @@ services:
       API_URL: http://api:8000
       SAAS_CONFIG: /config/local-saas.json
     volumes:
-      - ./data:/config:ro
+      - ${DATA_PATH:-./data}:/config:ro
       - legacy-data:/data
     ports: ["127.0.0.1:18600:8000"]
     depends_on:
@@ -170,6 +175,10 @@ services:
     environment: &airflow-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__PARALLELISM: ${AIRFLOW_PARALLELISM:-1}
+      AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "2"
+      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "1"
+      AIRFLOW__WEBSERVER__WORKERS: ${AIRFLOW_WEBSERVER_WORKERS:-1}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-biometric}:${POSTGRES_PASSWORD:-biometric_dev_only}@postgres:5432/airflow
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-biometric}:${POSTGRES_PASSWORD:-biometric_dev_only}@postgres:5432/${POSTGRES_DB:-biometric}
       AIRFLOW__WEBSERVER__SECRET_KEY: ddm501-demo-secret-key
@@ -177,8 +186,9 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
     volumes: &airflow-volumes
       - ./airflow/dags:/opt/airflow/dags:ro
-      - ./airflow/logs:/opt/airflow/logs
+      - ${AIRFLOW_LOGS_PATH:-./airflow/logs}:/opt/airflow/logs
       - ./:/opt/project
+      - ${DATA_PATH:-./data}:/opt/project/data
     command: >-
       bash -c "mkdir -p /opt/airflow/logs && chown -R 50000:0 /opt/airflow/logs &&
       airflow db migrate &&
@@ -216,6 +226,11 @@ services:
     environment: *airflow-env
     volumes: *airflow-volumes
     command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $${HOSTNAME}"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
     restart: unless-stopped
 
   prometheus:
@@ -225,6 +240,11 @@ services:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     ports: ["127.0.0.1:19090:9090"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   drift-monitor:
@@ -241,8 +261,13 @@ services:
       MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS:-60}
       PSI_ALERT_THRESHOLD: ${PSI_ALERT_THRESHOLD:-0.2}
       EVIDENTLY_REPORT: /reports/data-drift.html
-    volumes: ["./reports:/reports"]
+    volumes: ["${REPORTS_PATH:-./reports}:/reports"]
     ports: ["127.0.0.1:18001:8001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/metrics')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   alertmanager:
@@ -250,6 +275,11 @@ services:
     command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
     volumes: ["./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
     ports: ["127.0.0.1:19093:9093"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9093/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   grafana:
@@ -260,11 +290,84 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-biometric_dev_only}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/biometric-overview.json
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports: ["127.0.0.1:13000:3000"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  grafana-gateway:
+    image: nginx:1.28-alpine
+    depends_on:
+      grafana: {condition: service_healthy}
+    ports: ["127.0.0.1:13000:80"]
+    volumes:
+      - ./monitoring/nginx/grafana.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${REPORTS_PATH:-./reports}:/srv/reports:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ops-monitor:
+    build:
+      context: .
+      dockerfile: monitoring/Dockerfile
+    command: uvicorn monitoring.ops_monitor:app --host 0.0.0.0 --port 8003
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-biometric}:${POSTGRES_PASSWORD:-biometric_dev_only}@postgres:5432/${POSTGRES_DB:-biometric}
+      AIRFLOW_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-biometric}:${POSTGRES_PASSWORD:-biometric_dev_only}@postgres:5432/airflow
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      TRAINING_TENANT_ID: ${TRAINING_TENANT_ID:-demo}
+      REPORT_DIR: /reports
+    volumes: ["${REPORTS_PATH:-./reports}:/reports"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    ports: ["127.0.0.1:18003:8003"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  docker-observer:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: "1"
+      INFO: "1"
+      VERSION: "1"
+      NETWORKS: "1"
+      POST: "0"
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.4.2
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy /etc/alloy/config.alloy
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-ddm501-biometric-demo}
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy
+    depends_on: [loki, docker-observer]
     restart: unless-stopped
 
 volumes:
@@ -272,3 +375,5 @@ volumes:
   minio-data:
   grafana-data:
   legacy-data:
+  loki-data:
+  alloy-data:

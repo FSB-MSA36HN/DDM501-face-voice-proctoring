@@ -26,7 +26,7 @@ def validate(rows: list[dict]) -> dict:
         vector = np.asarray(embedding, dtype=float)
         dimensions[modality].add(vector.size)
         people[modality].add(str(row["person_id"]))
-        if vector.ndim != 1 or vector.size < 16 or not np.isfinite(vector).all():
+        if vector.ndim != 1 or vector.size < 16 or not np.isfinite(vector).all() or np.linalg.norm(vector) < 1e-8:
             errors.append(f"invalid embedding: {row['id']}")
         if not 0 <= float(row["quality"]) <= 1:
             errors.append(f"quality outside [0,1]: {row['id']}")

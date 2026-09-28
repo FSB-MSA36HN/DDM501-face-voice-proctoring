@@ -227,23 +227,19 @@ elif page == "Khách hàng & API keys":
         st.error(str(exc))
 
 elif page == "Vận hành full pipeline":
-    st.info("Khu vực quản trị nền tảng. Trong triển khai cloud/private, đặt các công cụ nội bộ sau VPN/SSO.")
+    st.subheader("Monitoring tập trung")
+    st.link_button("Mở Grafana Monitoring Centre", os.getenv("PUBLIC_GRAFANA_URL", "http://localhost:13000/d/biometric-overview"), type="primary")
+    st.caption("Xem service health, dữ liệu, drift, performance, Registry, review queue, Airflow, RAI, tài nguyên, logs và các báo cáo tại Grafana. Cảnh báo gửi tới Telegram.")
+    st.subheader("Quản trị pipeline")
     links = {
         "Ứng dụng thi cũ giả lập": "http://localhost:18600", "API / Swagger": "http://localhost:18100/docs",
         "API health": "http://localhost:18100/health", "Airflow": "http://localhost:18081",
         "MLflow Registry": "http://localhost:15030", "MinIO Console": "http://localhost:19101",
-        "Grafana": "http://localhost:13000/d/biometric-overview", "Prometheus Targets": "http://localhost:19090/targets",
-        "Prometheus Alerts": "http://localhost:19090/alerts", "Alertmanager": "http://localhost:19093",
-        "Drift / performance metrics": "http://localhost:18001/metrics", "Webhook metrics": "http://localhost:18002/metrics",
         "GitHub Actions": "https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions",
     }
     links.update(json.loads(os.getenv("PORTAL_LINKS_JSON") or "{}"))
     for label, url in links.items():
         st.link_button(label, url)
-    for report in ("data-drift", "model-performance"):
-        response = requests.get(f"{API_URL}/v1/admin/reports/{report}", headers=HEADERS, timeout=30)
-        if response.ok:
-            st.download_button(f"Evidently: {report}", response.content, file_name=report + ".html", mime="text/html")
     if st.button("Reload champion từ MLflow"):
         try:
             st.json(api("POST", "/v1/admin/reload-model"))

@@ -1,8 +1,79 @@
 import importlib
+import io
+
+import cv2
+import numpy as np
+from scipy.io import wavfile
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+
+
+def test_real_upload_enrollment_verification_and_input_failures(monkeypatch, tmp_path):
+    from app.biometrics import BiometricEngine
+    from app.config import get_settings
+    from app.db import get_db
+    from app.registry import RuntimeModel
+    from app.storage import ObjectStore
+
+    monkeypatch.setenv('API_KEY', 'upload-test')
+    monkeypatch.setenv('MODEL_BACKEND', 'demo')
+    monkeypatch.setenv('STORE_RAW_BIOMETRICS', 'false')
+    get_settings.cache_clear()
+    main = importlib.import_module('app.main')
+    settings = get_settings()
+    engine = create_engine(f"sqlite:///{(tmp_path/'uploads.db').as_posix()}",connect_args={'check_same_thread':False})
+    monkeypatch.setattr(main,'engine',engine)
+    monkeypatch.setattr(main,'settings',settings)
+    monkeypatch.setattr(main,'biometrics',BiometricEngine(settings))
+    monkeypatch.setattr(main,'object_store',ObjectStore(settings))
+    monkeypatch.setattr(main.registry,'current',RuntimeModel(.45,.25,'test-registered'))
+    monkeypatch.setattr(main.registry,'load',lambda:main.registry.current)
+    def database():
+        with Session(engine) as db:
+            yield db
+    main.app.dependency_overrides[get_db] = database
+    image = np.zeros((160,160,3),dtype=np.uint8)
+    image[::8,:] = 255
+    image[:,::8] = 255
+    _, encoded = cv2.imencode('.png',image)
+    stream = io.BytesIO()
+    wave = (np.sin(np.arange(48000)*2*np.pi*220/16000)*20000).astype(np.int16)
+    wavfile.write(stream,16000,wave)
+    face, voice = ('face.png',encoded.tobytes(),'image/png'), ('voice.wav',stream.getvalue(),'audio/wav')
+    headers = {'X-API-Key':'upload-test'}
+    try:
+        with TestClient(main.app) as client:
+            body = {'external_id':'UPLOAD-1','display_name':'Upload Candidate'}
+            person = client.post('/v1/people',headers=headers,json=body).json()
+            assert client.post('/v1/people',headers=headers,json=body).status_code == 409
+            enrollment = f"/v1/people/{person['id']}/enroll"
+            assert client.post(enrollment,headers=headers).status_code == 400
+            result = client.post(enrollment,headers=headers,files=[('face_files',face),('voice_files',voice)]).json()
+            assert result['face_added'] == result['voice_added'] == 1
+            duplicate = client.post(enrollment,headers=headers,files=[('face_files',face)]).json()
+            assert duplicate['face_added'] == 0 and len(duplicate['rejected']) == 1
+            data = {'person_id':person['id'],'session_id':'uploaded'}
+            verified = client.post('/v1/verify',headers=headers,data=data,files={'face_file':face,'voice_file':voice})
+            assert verified.status_code == 200, verified.text
+            assert verified.json()['accepted'] and verified.json()['explanations']['accepted']
+            assert verified.json()['face_score'] > .99
+            missing = client.post('/v1/verify',headers=headers,data=data,files={'face_file':face}).json()
+            assert missing['decision'] == 'review' and 'missing_voice' in missing['reasons']
+            assert client.post('/v1/verify',headers=headers,data=data,files={'face_file':('bad.png',b'bad','image/png')}).status_code == 422
+            assert client.post('/v1/verify',headers=headers,data=data,files={'face_file':('bad.txt',b'bad','text/plain')}).status_code == 415
+            assert client.post('/v1/verify',headers=headers,data=data,files={'face_file':('empty.png',b'','image/png')}).status_code == 400
+            feedback = f"/v1/events/{verified.json()['event_id']}/feedback"
+            for label in (True,False):
+                assert client.put(feedback,headers=headers,json={'is_genuine':label,'reviewer':'test'}).status_code == 201
+            assert len(client.get('/v1/events',headers=headers).json()) == 2
+            monkeypatch.setattr(settings,'max_upload_mb',0)
+            assert client.post('/v1/verify',headers=headers,data=data,files={'face_file':face}).status_code == 413
+    finally:
+        main.app.dependency_overrides.clear()
+        engine.dispose()
+        get_settings.cache_clear()
 
 
 def test_people_simulation_feedback_flow(monkeypatch, tmp_path):
