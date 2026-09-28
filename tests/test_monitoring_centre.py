@@ -30,6 +30,17 @@ def test_identity_holdout_has_no_subject_overlap_and_matches_serving():
     assert threshold > 0
     for fold in report['folds']:
         assert not set(fold['train_identities']) & set(fold['test_identities'])
+        assert not set(report['holdout_identities']) & (set(fold['train_identities']) | set(fold['test_identities']))
+    assert metrics['cv_folds'] == 4
+    assert report['selection_method'] == 'minimum_margin_meeting_internal_cv_budget'
+    changed = json.loads(json.dumps(rows))
+    for row in changed:
+        if row['person_id'] in report['holdout_identities']:
+            row['embedding'] = [1.] * 20
+    other_threshold, other_metrics, _ = identity_evaluation(changed)
+    assert other_threshold == threshold
+    assert other_metrics['cv_far'] == metrics['cv_far']
+    assert other_metrics['holdout_far'] == 1
     positive, negative = policy_scores(rows)
     assert len(positive) == 60 and len(negative) == 190
     assert positive.min() > .99 and negative.max() < .01

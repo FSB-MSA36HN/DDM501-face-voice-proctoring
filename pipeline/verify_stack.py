@@ -53,6 +53,9 @@ def main() -> None:
         run = get(mlflow + "/api/2.0/mlflow/runs/get", params={"run_id": model["run_id"]})["run"]
         parameters = {item["key"]: item["value"] for item in run["data"]["params"]}
         assert len(parameters["dataset_version"]) == 64
+        assert parameters['selection_method'] == 'internal_cv_only_holdout_reserved'
+        metrics = {item['key']:item['value'] for item in run['data']['metrics']}
+        assert metrics['face_cv_folds'] == metrics['voice_cv_folds'] == 4
         files = get(mlflow + "/api/2.0/mlflow/artifacts/list", params={
             "run_id": model["run_id"], "path": "data",
         })["files"]

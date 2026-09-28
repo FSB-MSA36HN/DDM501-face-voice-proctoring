@@ -29,7 +29,7 @@ Rubric thuyết trình riêng: introduction 15%, content 40%, demo 15%, Q&A 15%,
 | Feature engineering | `api/app/biometrics.py` | Decode/quality/resample/normalize; SFace/ECAPA frozen encoders |
 | Train/tune | `calibrate_and_register.py`, `evaluation.py` | Threshold calibration/grid objectives; không claim fine-tune encoders |
 | Experiment tracking | MLflow | Params/metrics/artifacts/signature + six nested objective runs |
-| Evaluate | Identity-disjoint max-template CV + holdout | Serving-compatible scoring, holdout excluded from threshold tune; demo FAR/FRR gate ≤20% |
+| Evaluate | Identity-disjoint max-template CV + holdout | Five identity partitions: one reserved holdout, four internal CV folds. Choose minimum conservative margin from fixed candidates using CV budget only; holdout excluded from every fold and tuning. Demo FAR/FRR gate ≤20% |
 | Responsible AI | `responsible_ai_report.py` | Source/class counts, intervals, quality-gap status; audit precedes promotion |
 | Registry/version | MLflow candidate/champion | Version-pinned artifacts, dataset fingerprint match, guarded CLI/DAG promotion |
 | ML API | FastAPI `/v1/verify`, public sessions | Versioned REST/OpenAPI, validated upload, faithful explanation response |
