@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PersonCreate(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"external_id": "CANDIDATE-001", "display_name": "Candidate One"}]})
     external_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
     display_name: str = Field(min_length=1, max_length=200)
 
@@ -43,6 +44,7 @@ class VerificationOut(BaseModel):
     reasons: list[str]
     model_version: str
     latency_ms: int
+    explanations: dict = Field(default_factory=dict)
 
 
 class SimulationIn(BaseModel):

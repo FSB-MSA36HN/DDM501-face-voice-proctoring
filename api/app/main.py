@@ -18,6 +18,7 @@ from .db import engine, get_db
 from .auth import Principal, authenticate, audit, digest, get_person, operator, platform
 from .migrations import migrate
 from .decision import decide
+from .explainability import explain
 from .metrics import FEEDBACK, LATENCY, MODEL_INFO, PEOPLE, REQUESTS, VERIFY
 from .models import BiometricSample, Person, VerificationEvent, VerificationFeedback
 from .registry import RegistryLoader
@@ -35,8 +36,8 @@ async def lifespan(_: FastAPI):
     migrate(engine)
     try:
         registry.load()
-    except Exception:
-        logging.getLogger(__name__).warning("Champion unavailable at startup; using configured defaults", exc_info=True)
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Champion unavailable at startup; type=%s", type(exc).__name__)
     MODEL_INFO.labels(version=registry.current.version, backend=settings.model_backend).set(1)
     yield
 
@@ -223,6 +224,7 @@ async def perform_verification(
         risk_score=round(risk, 4), face_score=scores["face"], voice_score=scores["voice"],
         face_quality=qualities["face"], voice_quality=qualities["voice"], thresholds=thresholds,
         reasons=reasons, model_version=registry.current.version, latency_ms=latency_ms,
+        explanations=explain(scores, qualities, thresholds, settings.require_both_modalities),
     )
 
 
@@ -278,6 +280,7 @@ def simulate_observation(body: SimulationIn, db: Session = Depends(get_db), prin
         face_score=body.face_score, voice_score=body.voice_score,
         face_quality=body.face_quality, voice_quality=body.voice_quality,
         thresholds=thresholds, reasons=reasons, model_version=registry.current.version, latency_ms=0,
+        explanations=explain(scores, qualities, thresholds, settings.require_both_modalities),
     )
 
 
@@ -306,7 +309,7 @@ def reload_model() -> dict:
     try:
         runtime = registry.load()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Không tải được model Registry: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Không tải được model Registry") from exc
     MODEL_INFO.clear()
     MODEL_INFO.labels(version=runtime.version, backend=settings.model_backend).set(1)
     return runtime.__dict__

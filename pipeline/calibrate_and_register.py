@@ -17,9 +17,11 @@ from mlflow.models import infer_signature
 from sqlalchemy import create_engine
 
 if __package__:
+    from .evaluation import identity_evaluation, select_trial
     from .data_snapshot import extract, read_snapshot
     from .validate_data import validate
 else:
+    from evaluation import identity_evaluation, select_trial
     from data_snapshot import extract, read_snapshot
     from validate_data import validate
 
@@ -93,7 +95,8 @@ class RiskBundle(mlflow.pyfunc.PythonModel):
     def predict(self, context, model_input, params=None):
         face = np.asarray(model_input.get("face_score", np.nan), dtype=float)
         voice = np.asarray(model_input.get("voice_score", np.nan), dtype=float)
-        return ((face < self.thresholds["face_threshold"]) | (voice < self.thresholds["voice_threshold"])).astype(int)
+        invalid = ~np.isfinite(face) | ~np.isfinite(voice) | (np.abs(face) > 1) | (np.abs(voice) > 1)
+        return (invalid | (face < self.thresholds["face_threshold"]) | (voice < self.thresholds["voice_threshold"])).astype(int)
 
 
 def main() -> None:
@@ -118,11 +121,10 @@ def main() -> None:
         if isinstance(embedding, str):
             embedding = json.loads(embedding)
         grouped[row["modality"]].append({"person_id": row["person_id"], "embedding": embedding})
-    metrics, thresholds = {}, {}
+    metrics, thresholds, evaluations = {}, {}, {}
     for modality in ("face", "voice"):
-        positive, negative = pairs(grouped[modality])
-        threshold, result = choose_threshold(positive, negative)
-        result.update(cross_validate(positive, negative))
+        threshold, result, evaluation = identity_evaluation(grouped[modality])
+        evaluations[modality] = evaluation
         thresholds[f"{modality}_threshold"] = threshold
         metrics.update({f"{modality}_{key}": value for key, value in result.items()})
     mlflow.set_tracking_uri(tracking_uri)
@@ -141,6 +143,15 @@ def main() -> None:
                 "threshold_grid_steps": 1151, "objective": "minimize_worst_far_frr",
             })
             mlflow.log_metrics(metrics)
+            mlflow.log_params({**thresholds, 'evaluation_method': 'identity-disjoint-max-template'})
+            mlflow.log_dict(evaluations, 'evaluation/identity-disjoint.json')
+            for modality, evaluation in evaluations.items():
+                for objective in ('minimax', 'balanced_error', 'far_constrained'):
+                    trial = select_trial(evaluation['trials'], objective)
+                    with mlflow.start_run(run_name=f'{modality}-{objective}', nested=True):
+                        mlflow.log_params({'modality': modality, 'objective': objective,
+                                           'threshold': trial['threshold'], 'dataset_version': snapshot['dataset_version']})
+                        mlflow.log_metrics({k:trial[k] for k in ('far', 'frr')})
             mlflow.log_dict(snapshot, "data/snapshot.json")
             mlflow.log_dict(quality, "data/validation.json")
             mlflow.log_artifact(path, artifact_path="evaluation")
@@ -165,7 +176,11 @@ def main() -> None:
         time.sleep(1)
     client.set_registered_model_alias(model_name, "candidate", version.version)
     if args.promote:
-        client.set_registered_model_alias(model_name, "champion", version.version)
+        if __package__:
+            from .promotion_gate import promote
+        else:
+            from promotion_gate import promote
+        promote(client, model_name, version, run.info.run_id)
     print(json.dumps({"model": model_name, "version": version.version, "thresholds": thresholds, "metrics": metrics}, indent=2))
 
 

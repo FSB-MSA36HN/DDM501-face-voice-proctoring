@@ -1,96 +1,2382 @@
 {
-  "annotations": {"list": []},
-  "editable": true,
-  "graphTooltip": 1,
+  "uid": "biometric-overview",
+  "title": "DDM501 — Monitoring Centre",
+  "schemaVersion": 41,
+  "version": 2,
+  "editable": false,
+  "refresh": "15s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "ddm501",
+    "monitoring"
+  ],
   "panels": [
     {
-      "type": "timeseries", "title": "SaaS webhook delivery outcomes", "id": 11,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum by (outcome) (rate(biometric_webhook_attempts_total[5m]))", "legendFormat": "{{outcome}}"}],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35}
+      "type": "row",
+      "id": 1,
+      "title": "1 · Tổng quan hệ thống và cảnh báo",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
     },
     {
-      "type": "stat", "title": "SaaS webhook outbox", "id": 12,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "biometric_webhook_backlog", "legendFormat": "{{status}}"}],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35}
-    },
-    {
-      "type": "timeseries", "title": "Evidently model performance (reviewed events)", "id": 9,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "biometric_model_performance", "legendFormat": "{{metric}} / {{window}}"}],
-      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
-      "gridPos": {"h": 9, "w": 18, "x": 0, "y": 26}
-    },
-    {
-      "type": "stat", "title": "Performance report ready (1 = ready)", "id": 10,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "biometric_performance_report_success"}],
-      "gridPos": {"h": 9, "w": 6, "x": 18, "y": 26}
-    },
-    {
-      "type": "stat", "title": "Verification rate", "id": 1,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum(rate(biometric_verifications_total[5m]))", "legendFormat": "requests/s"}],
-      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
-    },
-    {
-      "type": "piechart", "title": "Decisions (24h)", "id": 2,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum by (decision) (increase(biometric_verifications_total[24h]))", "legendFormat": "{{decision}}"}],
-      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
-    },
-    {
-      "type": "timeseries", "title": "Verification latency p50/p95", "id": 3,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "id": 2,
+      "type": "stat",
+      "title": "Service readiness — 1 healthy / 0 unavailable",
+      "description": "HTTP readiness, including the registered API champion. Internal services are admin-only.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "histogram_quantile(0.50, sum by (le) (rate(biometric_verification_seconds_bucket[5m])))", "legendFormat": "p50"},
-        {"expr": "histogram_quantile(0.95, sum by (le) (rate(biometric_verification_seconds_bucket[5m])))", "legendFormat": "p95"}
+        {
+          "refId": "A",
+          "expr": "biometric_service_health",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
     },
     {
-      "type": "timeseries", "title": "Risk score", "id": 4,
-      "datasource": {"type": "postgres", "uid": "biometric-postgres"},
-      "targets": [{"format": "time_series", "rawSql": "SELECT created_at AS time, risk_score AS value FROM verification_events WHERE $__timeFilter(created_at) ORDER BY created_at", "refId": "A"}],
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8}
+      "id": 3,
+      "type": "stat",
+      "title": "Alerts đang firing",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ALERTS{alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
     },
     {
-      "type": "table", "title": "Recent review queue", "id": 5,
-      "datasource": {"type": "postgres", "uid": "biometric-postgres"},
-      "targets": [{"format": "table", "rawSql": "SELECT created_at, session_id, person_id, risk_score, face_score, voice_score, reasons, model_version FROM verification_events WHERE accepted = false ORDER BY created_at DESC LIMIT 100", "refId": "A"}],
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8}
+      "id": 4,
+      "type": "timeseries",
+      "title": "Verification rate",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(biometric_verifications_total[5m]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
-      "type": "timeseries", "title": "Production drift — PSI", "id": 6,
-      "description": "PSI <0.1 stable, 0.1–0.2 investigate, >0.2 alert",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.2}]}}},
-      "targets": [{"expr": "biometric_feature_psi", "legendFormat": "{{feature}}"}],
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 17}
+      "id": 5,
+      "type": "piechart",
+      "title": "Decisions (24h)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (decision) (increase(biometric_verifications_total[24h]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
-      "type": "stat", "title": "Human-reviewed accuracy", "id": 7,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "biometric_feedback_accuracy", "legendFormat": "accuracy"}],
-      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
-      "gridPos": {"h": 9, "w": 6, "x": 12, "y": 17}
+      "id": 6,
+      "type": "timeseries",
+      "title": "Verification latency p50/p95",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(biometric_verification_seconds_bucket[5m])))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(biometric_verification_seconds_bucket[5m])))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
-      "type": "stat", "title": "Drifted feature share", "id": 8,
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "biometric_drifted_feature_share", "legendFormat": "drifted"}],
-      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
-      "gridPos": {"h": 9, "w": 6, "x": 18, "y": 17}
+      "id": 7,
+      "type": "timeseries",
+      "title": "HTTP request / error rate",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(biometric_requests_total[5m]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(biometric_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(biometric_requests_total[5m])),0.001)",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 17,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Pending/firing alerts — Prometheus rules",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 9,
+      "title": "2 · Data quality và capture quality",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Training identities / samples — tenant demo mặc định",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_training_identities",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_training_samples",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Training validation / embedding dimensions",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_training_data_valid",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_embedding_dimension",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Face / voice similarity",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT e.created_at AS time, e.face_score, e.voice_score FROM verification_events e JOIN people p ON p.id=e.person_id WHERE $__timeFilter(e.created_at) AND p.tenant_id IN (${tenant:sqlstring}) ORDER BY time",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Capture quality — face / voice",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT e.created_at AS time, e.face_quality, e.voice_quality FROM verification_events e JOIN people p ON p.id=e.person_id WHERE $__timeFilter(e.created_at) AND p.tenant_id IN (${tenant:sqlstring}) ORDER BY time",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 42,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Reason codes trong khoảng thời gian chọn",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT reason, count(*) AS events FROM verification_events e JOIN people p ON p.id=e.person_id CROSS JOIN LATERAL jsonb_array_elements_text(e.reasons::jsonb) AS reason WHERE $__timeFilter(e.created_at) AND p.tenant_id IN (${tenant:sqlstring}) GROUP BY reason ORDER BY events DESC",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Enrollment theo tenant / modality",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT t.name AS tenant,s.modality,count(*) AS samples,avg(s.quality) AS mean_quality FROM biometric_samples s JOIN people p ON p.id=s.person_id JOIN tenants t ON t.id=p.tenant_id WHERE p.tenant_id IN (${tenant:sqlstring}) GROUP BY t.name,s.modality",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 16,
+      "title": "3 · Drift và Evidently",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Production drift — PSI",
+      "description": "PSI <0.1 stable, 0.1–0.2 investigate, >0.2 alert. Observations can include deliberate simulation.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_feature_psi",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Drifted feature share",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_drifted_feature_share",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Reference / current window sizes",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_monitor_samples",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "Drift report ready / age (seconds)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_evidently_report_success",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "time()-biometric_monitor_last_success_unixtime",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 67,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Human report ready / available labels",
+      "description": "Insufficient human labels are displayed honestly; no synthetic labels substitute for them.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_reviewed_report_success{source=\"human\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_reviewed_samples{source=\"human\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Synthetic report ready / available labels",
+      "description": "Technical simulation only; not production biometric accuracy.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_reviewed_report_success{source=\"synthetic\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_reviewed_samples{source=\"synthetic\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 75,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "row",
+      "id": 23,
+      "title": "4 · Model Registry, evaluation và explainability",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 83,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "Serving model version / backend",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_model_info",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "table",
+      "title": "Registry candidate / champion / candidate gate",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_registry_model_info",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_candidate_gate_passed",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 84,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Registered face / voice thresholds",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_registry_threshold",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 92,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Calibration / identity CV / holdout FAR & FRR",
+      "description": "Offline identity-disjoint evaluation on demo feature data. Historical versions may lack holdout metrics.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_registry_evaluation",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 92,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "Human Evidently performance — reference / current",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_reviewed_performance{source=\"human\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 100,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "Synthetic Evidently performance — technical demo",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_reviewed_performance{source=\"synthetic\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 100,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "Human-reviewed accuracy — excludes simulation",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_feedback_accuracy",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 108,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Ground truth counts / confusion matrix by source",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT CASE WHEN f.reviewer='synthetic-simulation' THEN 'synthetic' ELSE 'human' END AS source, f.is_genuine AS target,e.accepted AS prediction,count(*) AS events FROM verification_events e JOIN verification_feedback f ON f.event_id=e.id JOIN people p ON p.id=e.person_id WHERE $__timeFilter(e.created_at) AND p.tenant_id IN (${tenant:sqlstring}) GROUP BY 1,2,3",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 108,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "text",
+      "title": "Giải thích policy",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [],
+      "gridPos": {
+        "x": 0,
+        "y": 116,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Giải thích quyết định\nAPI trả **reason codes**, **score − threshold**, **threshold sensitivity ±0.05**, và **single-modality counterfactual**.\n\nĐây là giải thích policy; không chứng minh danh tính. Historic events chưa lưu threshold nên dashboard không suy diễn margins lịch sử."
+      }
+    },
+    {
+      "type": "row",
+      "id": 33,
+      "title": "5 · Sessions, review và webhook",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 124,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "Risk score",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT e.created_at AS time,e.risk_score FROM verification_events e JOIN people p ON p.id=e.person_id WHERE $__timeFilter(e.created_at) AND p.tenant_id IN (${tenant:sqlstring}) ORDER BY time",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 125,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Session states theo tenant",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT t.name AS tenant,CASE WHEN s.status='pending' AND s.expires_at<now() THEN 'expired' ELSE s.status END AS status,count(*) AS sessions FROM verify_sessions s JOIN tenants t ON t.id=s.tenant_id WHERE s.tenant_id IN (${tenant:sqlstring}) GROUP BY 1,2",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 125,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 36,
+      "type": "table",
+      "title": "Review queue — chỉ phiên đang chờ quyết định",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT s.created_at,s.id AS session_id,t.name AS tenant,p.external_ref AS candidate,s.expires_at,e.face_score,e.voice_score,e.reasons,e.model_version FROM verify_sessions s JOIN verification_events e ON e.id=s.event_id JOIN people p ON p.id=s.person_id JOIN tenants t ON t.id=s.tenant_id WHERE s.status='review' AND s.tenant_id IN (${tenant:sqlstring}) ORDER BY s.created_at ASC LIMIT 100",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 133,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "table",
+      "title": "Review turnaround / SLA 15 phút",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT s.id,EXTRACT(EPOCH FROM now()-s.created_at)/60 AS waiting_minutes,s.expires_at FROM verify_sessions s WHERE s.status='review' AND s.tenant_id IN (${tenant:sqlstring}) ORDER BY waiting_minutes DESC LIMIT 100",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 141,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 38,
+      "type": "timeseries",
+      "title": "SaaS webhook delivery outcomes",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(biometric_webhook_attempts_total[5m]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 141,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 39,
+      "type": "stat",
+      "title": "SaaS webhook outbox",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_webhook_backlog",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 149,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 40,
+      "type": "stat",
+      "title": "Webhook worker poll age",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time()-biometric_webhook_last_cycle_unixtime",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 149,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "Telegram configuration / notifications",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_telegram_configured",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_alert_notifications_total",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 157,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 42,
+      "type": "table",
+      "title": "Operator review decisions / audit",
+      "description": "",
+      "datasource": {
+        "type": "postgres",
+        "uid": "biometric-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT a.created_at,t.name AS tenant,a.action,a.target,a.details FROM audit_logs a JOIN tenants t ON t.id=a.tenant_id WHERE a.action IN ('session.approved','session.rejected') AND a.tenant_id IN (${tenant:sqlstring}) AND $__timeFilter(a.created_at) ORDER BY a.created_at DESC LIMIT 100",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 157,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 43,
+      "title": "6 · Airflow, Responsible AI và freshness",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 165,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 44,
+      "type": "stat",
+      "title": "Latest Airflow DAG state",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_airflow_latest_run_state",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 166,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 45,
+      "type": "stat",
+      "title": "Latest run / collector ages",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time()-biometric_airflow_latest_run_unixtime",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "time()-biometric_ops_last_success_unixtime",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 166,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 46,
+      "type": "table",
+      "title": "Latest DAG tasks — success / duration",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_airflow_task_success",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_airflow_task_seconds",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 174,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 47,
+      "type": "stat",
+      "title": "Collectors — database / registry / Airflow",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_ops_collection_success",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 174,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 48,
+      "type": "stat",
+      "title": "Human quality fairness status",
+      "description": "Capture quality is an operational proxy. insufficient_data is not a fairness pass.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_fairness_status",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_fairness_accuracy_gap",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 182,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 49,
+      "type": "table",
+      "title": "Fairness quality slices — source-separated",
+      "description": "Compare source/slice/class counts; report includes Wilson 95% intervals.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_fairness_slice",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 182,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 50,
+      "title": "7 · Infrastructure và logs",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 190,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 51,
+      "type": "timeseries",
+      "title": "Container CPU cores",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate(biometric_container_cpu_seconds_total{project=~\"$project\"}[5m]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 191,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 52,
+      "type": "timeseries",
+      "title": "Container memory working set",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (biometric_container_memory_bytes{project=~\"$project\"})",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 191,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 53,
+      "type": "timeseries",
+      "title": "Container block IO bytes / second",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service,operation) (rate(biometric_container_io_bytes_total{project=~\"$project\"}[5m]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 199,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 54,
+      "type": "timeseries",
+      "title": "Container network bytes / second",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service,direction) (rate(biometric_container_network_bytes_total{project=~\"$project\"}[5m]))",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 199,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 55,
+      "type": "stat",
+      "title": "Database size / connections",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_database_bytes",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "biometric_database_connections",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 207,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 56,
+      "type": "timeseries",
+      "title": "Health probe latency",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "biometric_service_probe_seconds",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 207,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 57,
+      "type": "stat",
+      "title": "Scrape targets",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 215,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 58,
+      "type": "logs",
+      "title": "Logs tập trung — chọn service ở phía trên",
+      "description": "",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{project=~\"$project\",service=~\"$service\"}",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 223,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 59,
+      "type": "logs",
+      "title": "Error / exception logs",
+      "description": "",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{project=~\"$project\",service=~\"$service\"} |~ \"(?i)(error|exception|failed)\"",
+          "legendFormat": "{{service}}{{task}}{{source}} {{window}} {{metric}} {{modality}} {{alias}}{{state}}{{feature}}{{outcome}}{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 231,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      }
     }
   ],
-  "refresh": "15s",
-  "schemaVersion": 41,
-  "tags": ["ddm501", "biometrics"],
-  "templating": {"list": []},
-  "time": {"from": "now-24h", "to": "now"},
-  "timezone": "browser",
-  "title": "Face + Voice Integrity Overview",
-  "uid": "biometric-overview",
-  "version": 1
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "label": "SQL tenant scope",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "biometric-postgres"
+        },
+        "query": "SELECT name AS __text,id AS __value FROM tenants ORDER BY name",
+        "multi": true,
+        "includeAll": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "project",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(biometric_container_cpu_seconds_total,project)",
+        "refresh": 1,
+        "current": {
+          "text": "ddm501-biometric-demo",
+          "value": "ddm501-biometric-demo"
+        }
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values({project=~\"$project\"},service)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Alert groups",
+      "url": "/alerting/groups?alertmanager=alertmanager",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Evidently data drift",
+      "url": "/reports/data-drift.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Human performance",
+      "url": "/reports/model-performance.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Synthetic demo performance",
+      "url": "/reports/synthetic-performance.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Model evaluation",
+      "url": "/reports/model-evaluation.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Data quality",
+      "url": "/reports/data-quality.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Responsible AI",
+      "url": "/reports/responsible-ai.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Pipeline status",
+      "url": "/reports/pipeline-status.html",
+      "type": "link",
+      "targetBlank": true
+    },
+    {
+      "title": "Received alerts",
+      "url": "/reports/alerts.html",
+      "type": "link",
+      "targetBlank": true
+    }
+  ]
 }

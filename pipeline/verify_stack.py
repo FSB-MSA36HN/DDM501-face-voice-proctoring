@@ -77,23 +77,25 @@ def main() -> None:
         return status
 
     def reports():
-        performance = json.loads(Path("reports/model-performance.json").read_text())
+        performance = json.loads(Path("reports/synthetic-performance.json").read_text())
+        human = json.loads(Path("reports/model-performance.json").read_text())
         drift = json.loads(Path("reports/data-drift.json").read_text())
         assert performance["status"] == "ok", performance
         assert drift["evidently_report_success"] and max(drift["psi"].values()) > 0.2, drift
         assert performance["quality"]["current"]["accuracy"] < performance["quality"]["reference"]["accuracy"]
-        for name in ("model-performance", "data-drift"):
+        for name in ("synthetic-performance", "data-drift"):
             assert Path(f"reports/{name}.html").stat().st_size > 1000
-        metrics = get(prometheus + "/api/v1/query", params={"query": "biometric_model_performance"})["data"]["result"]
-        assert len(metrics) == 8, metrics
-        return {"performance": performance, "psi": drift["psi"], "prometheus_metrics": metrics}
+        metrics = get(prometheus + "/api/v1/query", params={"query": 'biometric_reviewed_performance{source="synthetic"}'})["data"]["result"]
+        assert len(metrics) == 12, metrics
+        assert human['label_source'] == 'human' and performance['label_source'] == 'synthetic'
+        return {"synthetic_performance": performance, "human_status":human['status'], "psi": drift["psi"], "prometheus_metrics": metrics}
 
     def grafana():
         base = "http://127.0.0.1:13000"
         assert get(base + "/api/health")["database"] == "ok"
         dashboard = get(base + "/api/dashboards/uid/biometric-overview", auth=("admin", "admin"))["dashboard"]
         panels = [panel["title"] for panel in dashboard["panels"]]
-        assert any("Evidently model performance" in title for title in panels), panels
+        assert any("Human Evidently performance" in title for title in panels), panels
         return panels
 
     def alerts():
@@ -102,7 +104,7 @@ def main() -> None:
         firing = {item["labels"]["alertname"] for item in prom if item["state"] == "firing"}
         received = {item["labels"]["alertname"] for item in manager}
         if args.require_alerts:
-            required = {"BiometricDataDrift", "BiometricPerformanceDegraded"}
+            required = {"BiometricDataDrift", "BiometricSyntheticPerformanceDegraded"}
             assert required <= firing and required <= received, {"firing": sorted(firing), "received": sorted(received)}
         return {"prometheus_firing": sorted(firing), "alertmanager_received": sorted(received)}
 

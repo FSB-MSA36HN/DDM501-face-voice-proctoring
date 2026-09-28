@@ -43,4 +43,4 @@ with DAG(
         task_id="reload_current_champion",
         bash_command="python -c \"import os,requests; r=requests.post(os.environ['API_URL']+'/v1/admin/reload-model',headers={'X-API-Key':os.environ['API_KEY']},timeout=60); r.raise_for_status(); print(r.json())\"",
     )
-    ingest >> validate >> train >> evaluate >> responsible_ai_audit >> reload_champion
+    ingest >> validate >> train >> responsible_ai_audit >> evaluate >> reload_champion

@@ -1,72 +1,66 @@
-# Model performance và CI/CD
+# Vận hành: Grafana, Telegram và CI/CD
 
-## SaaS operation checkpoint
+## Trang monitoring chính
 
-- Tenant operator dùng portal để xem phiên, xử lý REVIEW, xem audit và retry webhook đã thất bại. Không sửa kết quả dự đoán gốc khi có quyết định của người kiểm tra.
-- Worker riêng xử lý outbox bền vững trong PostgreSQL. Theo dõi backlog/failed delivery trong Grafana và `http://localhost:18002/metrics`; khách hàng phải xử lý webhook idempotent.
-- Trước migration SaaS đã lưu `data/backups/pre-saas-20260927.dump`. Không tự restore đè dữ liệu đang chạy; xem quy trình backup/rollback trong [DEPLOYMENT.md](DEPLOYMENT.md).
-- Local CI: `powershell -ExecutionPolicy Bypass -File pipeline/ci_local.ps1`. Đây không phải bằng chứng GitHub Actions/self-hosted runner đã chạy.
-- Kiểm tra tích hợp: `python pipeline/verify_saas.py`; tạo thêm các phiên/event demo, không xóa dữ liệu cũ. Credential demo nằm trong `data/local-saas.json`, không gửi vào log hoặc commit.
-- Toàn bộ URL pipeline nằm ở [PROJECT_STATE.md](PROJECT_STATE.md); link monitoring chỉ được hiển thị cho platform admin trong portal. Khi triển khai public cần bảo vệ cả các dịch vụ monitoring phía reverse proxy/SSO, không chỉ ẩn link UI.
+Mở http://localhost:13000/d/biometric-overview, đăng nhập Grafana `admin` / `admin` ở demo loopback. Portal đưa một link monitoring tới Grafana; các link Airflow/MLflow/MinIO phục vụ quản trị pipeline.
 
-## Evidently performance
+Dashboard có bảy nhóm: service/alerts; data quality; drift/Evidently; Registry/evaluation/explainability; sessions/review/webhooks; Airflow/RAI/freshness; infrastructure/logs. Bộ chọn tenant áp dụng cho SQL; project/service áp dụng cho container/logs. Grafana là trang quản trị toàn nền tảng, không cung cấp tài khoản này cho tenant khách hàng.
 
-`drift-monitor` tạo `reports/model-performance.html` bằng Evidently 0.4.40 `ClassificationPreset`, gồm accuracy, precision, recall, F1 và confusion matrix. Summary ở `reports/model-performance.json`. Report data drift vẫn ở `reports/data-drift.html`.
+Report cùng origin `/reports/<name>.html` và `.json`: `data-drift`, `model-performance`, `synthetic-performance`, `data-quality`, `model-evaluation`, `pipeline-status`, `responsible-ai`, `alerts`. Nginx kiểm tra phiên đăng nhập qua Grafana `/api/user`; anonymous nhận 401/403. Các endpoint Prometheus/Airflow/MLflow tiếp tục dùng nội bộ.
 
-Ground truth lấy từ `verification_feedback.is_genuine`, prediction từ `verification_events.accepted`, join bằng event ID. Positive class là người thật (`1`). `REVIEW` được tính là không accept, không phải kết luận gian lận. Chỉ đánh giá các event đã được giám thị gắn nhãn; đây là performance trên tập reviewed, có thể không đại diện toàn bộ traffic.
+## Nguồn dữ liệu
 
-Hai cửa sổ không giao nhau, sắp theo thời gian inference, mỗi cửa sổ `PERFORMANCE_WINDOW_SIZE` event có feedback (mặc định 100). Reference là cửa sổ trước, current là cửa sổ mới nhất. Cần cả genuine và impostor trong mỗi cửa sổ. Khi chưa đủ nhãn hoặc thiếu một lớp, report hiển thị trạng thái chờ; không tạo nhãn giả. Performance được tính độc lập trước bước data drift nên vẫn có report nếu drift chưa đủ dữ liệu.
+| Nguồn | Nội dung |
+|---|---|
+| API / webhook-worker | Requests, decisions, latency, outbox, delivery |
+| drift-monitor | PSI/Evidently drift; classification từ reviewed events |
+| ops-monitor | DB validation, Registry, DAG/tasks, RAI, readiness, Docker stats, Telegram |
+| PostgreSQL datasource | Events, quality, enrollment, sessions, review queue, audit |
+| Alloy → Loki | Docker logs lọc Compose project, retention 7 ngày |
+| Prometheus / Alertmanager | Scrape freshness và alert groups |
 
-Trong `.env`, có thể giảm `PERFORMANCE_WINDOW_SIZE=10` cho demo (cần ít nhất 20 event được review và đủ hai lớp mỗi cửa sổ). Sau khi thay cấu hình, chạy:
+CPU/RAM/network/block IO lấy qua Docker API read-only proxy. Review queue chỉ lấy `verify_sessions.status='review'`; event có `accepted=false` đã xử lý không được tính pending review. Khi dữ liệu hết freshness, kiểm tra collector trước khi dùng kết quả cũ.
 
-```powershell
-docker compose up -d --build drift-monitor
-```
+## Human và synthetic performance
 
-Gắn nhãn qua UI hoặc `PUT /v1/events/{event_id}/feedback`. Sau một chu kỳ monitor (mặc định 60 giây), mở HTML và Grafana panel **Evidently model performance (reviewed events)**. `biometric_model_performance{metric,window}` chứa các metric; `biometric_performance_report_success` bằng 1 khi report thành công, 0 khi chờ/lỗi. Cảnh báo `BiometricPerformanceDegraded` bật nếu current accuracy <80% trong 5 phút và report đang hợp lệ. Ngưỡng demo này chỉnh trong `monitoring/prometheus/alerts.yml`.
+`model-performance` dùng reviewer khác `synthetic-simulation`; `synthetic-performance` dùng reviewer đó. Hai cửa sổ thời gian không giao nhau, mỗi cửa sổ `PERFORMANCE_WINDOW_SIZE` feedback, phải có cả genuine và impostor. Nếu thiếu nhãn human, báo cáo chờ và metrics NaN.
 
-## Kiểm chứng Docker end-to-end
+`biometric_reviewed_performance{source,metric,window}` có accuracy/precision/recall/F1/FAR/FRR. `biometric_reviewed_report_success{source}` biểu thị tính hợp lệ. Positive là genuine. REVIEW được tính là không accept. Đây là performance trên reviewed subset, có selection bias.
 
-Kết quả chạy thực tế: [VERIFICATION.md](VERIFICATION.md). Có thể kiểm chứng lại stack hiện tại bằng:
+Tạo kịch bản kỹ thuật: `python pipeline/simulate_drift.py --samples 100 --with-feedback`. Reference được thiết kế đúng và current cố tình sai. Alert `BiometricSyntheticPerformanceDegraded` có `evidence=synthetic_demo`; không trình bày như human accuracy. Human alert giữ tên `BiometricPerformanceDegraded`.
 
-```powershell
-python pipeline/verify_stack.py --dag-run verification_20260927_gatefix --inference --require-alerts
-```
+## Telegram
 
-Lệnh ghi bằng chứng vào `reports/verification.json`. `--inference` gửi hai request ảnh/WAV thật từ bootstrap đã enroll (cùng và khác danh tính), tạo thêm verification events. `--require-alerts` yêu cầu cả drift/performance alert đang firing và đã tới Alertmanager.
+Bot: `@ddm501_face_voice_proctoring_bot`. `.env` giữ `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`; không đưa vào code/logs/commit. Luồng: Prometheus → Alertmanager → ops-monitor `/alerts` → Telegram. Gửi cả firing/resolved. Lỗi gửi trả 503 để Alertmanager retry.
 
-Để tạo lại kịch bản monitoring có ground truth kỹ thuật:
+`python pipeline/verify_telegram.py` gửi tin thử trực tiếp. `python pipeline/verify_monitoring_centre.py --send-alert` kiểm tra Alertmanager và lưu `reports/monitoring-verification.json`. Transport xác minh TLS/CA/hostname; có fallback tới IP chính thức khi mạng reset kết nối SNI. Link localhost trong Telegram mở được trên máy chạy stack; điện thoại cần VPN/tunnel hoặc domain cấu hình riêng.
 
-```powershell
-python pipeline/simulate_drift.py --samples 100 --with-feedback
-```
-
-Lệnh tạo 200 observations và feedback tổng hợp, gắn reviewer `synthetic-simulation`; không phải nhãn do giám thị xác nhận. Reference được thiết kế đúng, current cố tình sai để chứng minh cảnh báo hoạt động. Chờ một chu kỳ monitor và ít nhất 5 phút để performance alert chuyển sang firing. Không dùng kết quả này để báo cáo độ chính xác sinh trắc học ngoài thực tế.
-
-Airflow snapshot hiện lưu chính xác feature rows và fingerprint cho từng run. MLflow lưu `data/snapshot.json`, `data/validation.json` và `dataset_version`. Gate kiểm tra FAR/FRR trên calibration và cross-validation; nếu bị reject, kiểm tra metrics trước khi sửa model/dữ liệu, không nới gate chỉ để DAG xanh.
-
-## Auto-deploy trên GitHub
-
-Workflow `.github/workflows/ci.yml` chạy lint, tests (bao gồm tạo report Evidently thật), coverage >80%, Compose validation và container builds. Push/merge vào `main` tự chạy deploy sau khi các quality/build jobs thành công. Push `develop` và pull request chỉ chạy CI. Vẫn có thể chạy `workflow_dispatch` với `deploy=true` trên `main`.
-
-Thiết lập một lần trên GitHub repo:
-
-1. Trong Settings → Actions → Runners, đăng ký runner Linux riêng cho demo, có labels `self-hosted`, `linux`, `ddm501-demo`; cài Docker Engine, Docker Compose v2 và curl. Runner cần quyền Docker, internet và đủ tài nguyên để build model images.
-2. Tạo environment `demo`, cho phép deploy từ `main`. Nếu muốn hoàn toàn tự động, environment không được yêu cầu manual approval.
-3. Thêm environment secrets `POSTGRES_PASSWORD` và `API_KEY`, mỗi giá trị ít nhất 16 ký tự thuộc `A-Z`, `a-z`, `0-9`, `_`, `-`. Với DB đã tồn tại, mật khẩu phải trùng mật khẩu DB đang dùng; workflow không tự đổi mật khẩu DB.
-4. Đưa các thay đổi đã kiểm tra lên `main`, xem job `deploy-demo` và các smoke tests API, exporter, Prometheus, Grafana.
-
-Deploy jobs chạy tuần tự, không hủy deploy đang chạy. Checkout giữ file runtime như `.env`, models và reports. Không dùng runner demo này để chạy PR không tin cậy. `prepare_deploy_env.py` đọc secrets qua environment, không in giá trị và giữ cấu hình `.env` hiện có; nếu mật khẩu DB thay đổi thì dừng để tránh làm mất kết nối dữ liệu cũ.
-
-Các cổng service bind loopback: truy cập từ máy runner hoặc qua SSH tunnel. GitHub-hosted CI không triển khai dịch vụ lên máy Windows đang mở workspace. Workflow chưa có tự động rollback; nếu smoke test thất bại, kiểm tra `docker compose ps` và logs, sửa lỗi hoặc revert commit trên `main` để chạy lại deployment.
-
-## Kiểm tra tại máy phát triển
+## Kiểm chứng và recovery
 
 ```powershell
-pip install -r requirements-api.txt -r requirements-monitoring.txt pytest pytest-cov ruff
-python -m ruff check api pipeline monitoring tests
-python -m pytest --cov=app.biometrics --cov=app.decision --cov=pipeline.validate_data --cov=pipeline.promotion_gate --cov=monitoring.drift_monitor --cov-report=term-missing --cov-fail-under=80
-docker compose config --quiet
+python pipeline/verify_stack.py --dag-run grafana_completion_20260928 --inference --require-alerts
+python pipeline/verify_monitoring_centre.py --send-alert
+python pipeline/verify_saas.py
+python pipeline/verify_recovery.py --rollback
 ```
 
-API Evidently tham khảo: [Classification Performance](https://docs-old.evidentlyai.com/presets/class-performance).
+Inference/SaaS tạo thêm event demo. Recovery lưu dump dưới `data/backups/`; restore vào DB tạm riêng, so sánh row counts rồi xóa DB tạm. `--rollback` đổi champion trong thời gian ngắn, reload/readiness rồi phục hồi champion ban đầu trong `finally`. Khi dùng thật phải điều phối traffic.
+
+Airflow: snapshot → validate → identity evaluation/register → RAI audit → gate → reload. Calibration/CV/holdout FAR và FRR phải ≤20% ở demo; snapshot candidate phải khớp run. `REQUIRE_HUMAN_FAIRNESS=true` chặn cả insufficient evidence.
+
+## CI/CD GitHub
+
+Quality chạy Ruff, compile, dashboard consistency, pytest + coverage ≥80% và Compose config. Coverage gồm toàn `app`, toàn `monitoring`, `pipeline.evaluation`, `data_snapshot`, `validate_data`, `promotion_gate`, `responsible_ai_report`; không phải toàn repository. CLI/frontend/Airflow/weights có live verification riêng. Artifact `quality-evidence` giữ JUnit/coverage XML.
+
+Container build dùng GitHub-hosted Ubuntu. Deploy trusted `main` dùng runner Windows `ddm501-local-windows`, labels `self-hosted`, `Windows`, `ddm501-demo`. Environment `demo` giới hạn main. PR không chạy trên runner local. Concurrency bảo đảm một deploy.
+
+Runner ở `data/github-runner` (gitignored), chạy hidden. `DDM501_RUNTIME_ROOT` trỏ repo runtime ban đầu. `prepare_runner_env.py` giữ secrets/project name/DB volumes và absolute paths models/data/reports/logs. Checkout dưới runner `_work` là nguồn code triển khai; không overwrite runtime `.env` bằng `.env.example`.
+
+Khởi động lại runner sau reboot từ repo runtime:
+
+```powershell
+$env:DDM501_RUNTIME_ROOT = (Get-Location).Path
+Start-Process cmd.exe -ArgumentList '/c','run.cmd' -WorkingDirectory data/github-runner -WindowStyle Hidden
+```
+
+Runner theo phiên người dùng, chưa cài Windows service. CI URL/kết quả thực tế ở `VERIFICATION.md`. Local checks: `powershell -ExecutionPolicy Bypass -File pipeline/ci_local.ps1` sau khi activate venv.

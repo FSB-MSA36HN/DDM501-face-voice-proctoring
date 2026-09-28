@@ -1,4 +1,5 @@
 import json
+import math
 import os
 from dataclasses import dataclass
 
@@ -34,9 +35,12 @@ class RegistryLoader:
             raise FileNotFoundError("Model bundle không có thresholds.json")
         with open(candidates[0], encoding="utf-8") as handle:
             config = json.load(handle)
+        thresholds = [float(config[key]) for key in ("face_threshold", "voice_threshold")]
+        if any(not math.isfinite(value) or not -1 <= value <= 1 for value in thresholds):
+            raise ValueError("Invalid registered biometric thresholds")
         self.current = RuntimeModel(
-            face_threshold=float(config["face_threshold"]),
-            voice_threshold=float(config["voice_threshold"]),
+            face_threshold=thresholds[0],
+            voice_threshold=thresholds[1],
             version=str(version.version),
         )
         return self.current
