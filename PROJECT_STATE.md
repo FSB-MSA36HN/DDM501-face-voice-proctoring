@@ -10,11 +10,13 @@ Live ngày 29/09: hai công ty có cùng mã EMP-001; same identity verified, ot
 
 Quality maintenance: **65 tests pass, coverage 86,50%**; Grafana **62 panels, 67 queries**. Portal được kiểm tra bằng Streamlit AppTest với API thật: trang đăng ký, sáu trang cho mỗi công ty và inline CSV export. Camera/mic và trình duyệt download/playback vẫn cần acceptance trên thiết bị thật. Xem [VERIFICATION.md](VERIFICATION.md) và [PROJECT_REPORT.md](PROJECT_REPORT.md) cho kết quả cuối; các mục bên dưới giữ bằng chứng baseline 28/09.
 
+GitHub maintenance [run 36562882154](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/runs/36562882154) **success** cho executable commit `8b720fc1a30ba16754c785020325e40de27c02e4`: quality, containers và deploy-demo đều pass. Remote có **65 tests, coverage 86,45%**. Runtime đã đối chiếu đúng release SHA; kiểm tra công ty/callbacks/isolation/evidence/export và monitoring sau deployment pass. Các commit tài liệu bàn giao sau SHA này không thay executable code.
+
 ## Phạm vi và quyền đã có
 
 Hoàn thiện dự án theo rubric/full pipeline, monitoring tập trung Grafana, cảnh báo Telegram, CI/CD trên repo hiện tại. Người dùng đã cho phép sửa code, chạy Docker, commit/push `main`, sử dụng GitHub đã auth qua VS Code/Git Credential Manager. Bot Telegram đã được tạo, credentials trong `.env`. Không triển khai cloud có phí hoặc tạo bằng chứng human/team giả. Không dùng subagents.
 
-## Kết quả hiện tại
+## Kết quả baseline 28/09
 
 - DAG `isolated_holdout_20260928`: 6/6 tasks success; snapshot → validate → calibrate/register → RAI → gate → reload. Champion/serving version **9**, 282 feature rows thuộc tenant demo.
 - Evaluation: max-template scoring giống serving; năm identity partitions, một holdout giữ ngoài toàn bộ tuning, bốn fold CV nội bộ. Chọn margin nhỏ nhất đạt ngân sách CV từ tập ứng viên cố định; gate calibration/CV/holdout FAR/FRR vẫn 20%.

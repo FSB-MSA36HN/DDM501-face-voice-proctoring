@@ -13,6 +13,8 @@
 | Multi-capture | Ảnh ghép hai mặt và audio ghép hai người có `multiple_faces`, `multiple_speakers_suspected`; chỉ là scenario inference |
 | Portal | Streamlit AppTest chạy sáu trang của cả hai tenant, đăng ký anonymous và inline CSV export với API thật |
 | Monitoring | 62 panels, 67 queries; dashboard queries, freshness, protected reports/sources pass; short/multi-face capture không bị coi là detector outage |
+| GitHub CI/CD | [Run 36562882154](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/runs/36562882154) success: quality, containers, deploy-demo; remote 65 tests, coverage 86,45% |
+| Deployed code | Release `8b720fc1a30ba16754c785020325e40de27c02e4` ngoài OneDrive; company/callback/isolation/evidence/export và monitoring kiểm tra lại sau deploy pass |
 
 Artifacts mới: `reports/company-verification.json`, `multiple-capture-verification.json`, `company-demo.pdf/csv`, `ui-verification.log`, `coverage-maintenance.json`, `tests-maintenance.xml`, `monitoring-verification.json`. Không đưa credentials/media/runtime artifacts lên GitHub. Camera/mic, browser playback/download và anti-spoof customer benchmark chưa được xác thực bằng những checks này.
 

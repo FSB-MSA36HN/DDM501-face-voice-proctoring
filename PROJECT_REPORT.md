@@ -46,7 +46,7 @@ Monitoring công ty gồm mã/tên nhân viên, mã phiên, các lượt check, 
 
 Đăng ký hai công ty; cấp integration keys; thêm nhân viên cùng mã ở cả hai; ghi danh; gửi media đúng và media người khác; kiểm tra identity và integrity signals riêng; xem webhook, evidence và lịch sử; xuất PDF/CSV; dùng key công ty thứ hai thử đọc check/evidence/export công ty thứ nhất để xác nhận từ chối. Media bootstrap là dữ liệu thử, không phải nhân viên thật hoặc nhãn human.
 
-CI kiểm tra Ruff, compile, dashboard consistency, pytest/coverage >=80%, image build và self-hosted deployment. Bằng chứng maintenance được ghi riêng với baseline trong VERIFICATION.md.
+GitHub Actions run 36562882154, executable commit 8b720fc: quality, containers và deploy-demo success; remote 65 tests, coverage 86,45%. Chi tiết trong VERIFICATION.md.
 
 Kiểm chứng maintenance local: 65 tests pass, coverage 86,50%; 62 panels và 67 truy vấn Grafana; hai công ty được kiểm tra isolation, enrollment, batch identity, MinIO evidence, PDF/CSV và callbacks acknowledged HTTP 200. Streamlit AppTest kiểm tra sáu trang mỗi công ty và export CSV với API thật. Ảnh ghép hai khuôn mặt/audio ghép hai người tạo cảnh báo tương ứng. Những dữ liệu bootstrap và audio kéo dài tổng hợp này không cung cấp accuracy anti-spoof hoặc fairness người dùng thật.
 
