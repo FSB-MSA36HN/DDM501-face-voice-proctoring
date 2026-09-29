@@ -1,83 +1,43 @@
-# SaaS verification — hướng dẫn tích hợp
+# Company API / webhook integration
 
-Sản phẩm cung cấp REST API, trang verify có sẵn và portal vận hành. Local Docker mô phỏng các service trên PaaS; cùng mã nguồn có thể triển khai private/on-premise. Hệ thống không tự chèn bước kiểm tra vào phần mềm của bên khác: nhà cung cấp phần mềm phải tích hợp tại backend hoặc khách hàng dùng quy trình review độc lập.
+## Contract
 
-## Luồng và quyền
+Customer owns exam login, capture cadence, scoring and business decisions. Service owns employees/enrollment, identity/integrity signals, history/evidence and callbacks. Company portal exposes its tenant only; Grafana/Evidently/Telegram are platform administration.
 
-```mermaid
-sequenceDiagram
-    participant E as Backend hệ thống thi
-    participant V as Verification API
-    participant U as Trang verify / thí sinh
-    participant D as PostgreSQL + outbox
-    participant W as Webhook worker
-    E->>V: POST /v1/sessions (integration key)
-    V-->>E: session ID + verify URL có thời hạn
-    E-->>U: Chuyển tới verify URL
-    U->>V: Upload ảnh/WAV + consent + session token
-    V->>D: Atomically lưu event, kết quả phiên, outbox
-    V-->>U: allow / review
-    W->>D: Claim delivery (row lock)
-    W->>E: Signed webhook (retry nếu lỗi)
-    E->>V: GET /v1/sessions/{id}
-    V-->>E: Kết quả ràng buộc tenant/person/exam
-    E->>E: Kiểm tra TTL và quyền vào thi, tiêu thụ attempt một lần
+1. POST /v1/registrations {name} creates simulated active company; operator_key returned once. Platform-admin tenant provisioning also remains available.
+2. Operator creates people and POST /v1/people/{id}/enroll with face_files/voice_files. At least 2 different images and WAVs recommended. Raw enrollment defaults off; embeddings/metadata remain.
+3. Operator POST /v1/company/keys issues integration key; GET lists key IDs, DELETE revokes only own keys. PATCH /v1/company sets webhook_url on approved host; GET provides signing secret to operator.
+4. Customer backend POST /v1/checks with X-API-Key integration credential and multipart person_id, session_id, request_id, consent=true, face_file, voice_file. session_id belongs to customer; new request_id for each capture, stable request_id for retry. Consent assertion must originate from an actual consented process.
+5. API returns check_id, employee code/name, checked_at, face_match/voice_match, scores, verified/suspicious/inconclusive, reason_codes/labels, capabilities, model_version and evidence_status.
+6. GET /v1/checks supports person_id/session_id/start/end/limit/offset. GET /v1/checks/{id} fetches canonical immutable result. Company decides consequences; no automatic exam admission contract in checks.
+7. Operator GET /v1/company/report[.csv|.pdf] exports same filtered history and employee/session first-last ranges. GET /v1/checks/{id}/evidence/face|voice streams protected evidence. No public S3 link/secret in report.
+
+## Example backend request
+
+```python
+import requests, uuid
+with open('capture.jpg','rb') as face, open('capture.wav','rb') as voice:
+    result = requests.post('http://localhost:18100/v1/checks',
+        headers={'X-API-Key': integration_key},
+        data={'person_id': employee_uuid, 'session_id': 'ANNUAL-2026-ATTEMPT-1',
+              'request_id': str(uuid.uuid4()), 'consent': 'true'},
+        files={'face_file': ('capture.jpg',face,'image/jpeg'),
+               'voice_file': ('capture.wav',voice,'audio/wav')},timeout=180)
+    result.raise_for_status()
 ```
 
-| Credential | Được làm | Không được làm |
-|---|---|---|
-| Platform API key | Tạo tenant, cấp/thu hồi key, reload model, xem report monitoring toàn nền tảng | Không mặc định truy vấn dữ liệu tenant khác qua endpoint nghiệp vụ; muốn thao tác phải dùng key tenant |
-| Operator key | Ghi danh, verify trực tiếp, review, feedback, audit, retry webhook của tổ chức | Quản trị tenant/model, dữ liệu tổ chức khác |
-| Integration key | Tạo hồ sơ, liệt kê hồ sơ và tạo/đọc phiên/kết quả của tổ chức | Ghi danh, quyết định review, ghi feedback, gọi verify trực tiếp hoặc quản trị nền tảng |
-| Session token | Đọc trạng thái cơ bản và submit đúng một phiên còn hạn | Chọn người khác, tạo phiên, xem danh sách dữ liệu hoặc submit lần hai |
+Employee binding must come from customer backend's authenticated identity, not a browser-selected arbitrary person_id. Cadence is customer-owned; 30 seconds and audio 10 seconds are examples. WAV supports 0.8-30 seconds; short clips may not support speaker consistency. Cold models cost more latency; pilot must measure the complete checks path separately from legacy identity latency.
 
-API keys tenant được lưu dưới dạng SHA-256 digest; key ngẫu nhiên chỉ trả về lúc cấp. Token phiên là HMAC theo secret riêng của server, được đưa trong URL fragment để tránh access-log/query/referrer; trang hosted chuyển token vào Authorization header và xóa fragment khỏi history. TTL mặc định 15 phút, tối đa 30 phút. Cần tách `SESSION_SIGNING_KEY`/`WEBHOOK_MASTER_KEY` khỏi platform key khi triển khai thật.
+## Signed business webhook
 
-## Onboarding khách hàng
+Envelope: id (delivery ID), type=integrity.checked, data=same check result as API. Headers X-Webhook-Id/Timestamp/Signature. Verify hex HMAC-SHA256(secret, timestamp + '.' + raw_body), constant-time comparison, <=5 minutes skew. Persist unique delivery ID; return 2xx for known duplicates. Delivery is at-least-once, maximum 5 attempts with backoff; operator may retry failed delivery. GET canonical check if state needs reconciliation. No media/embedding/API keys in payload. Evidence requires operator authentication.
 
-1. Admin tạo tenant tại portal (hoặc `POST /v1/admin/tenants`), cấu hình callback và return URL thuộc host được duyệt.
-2. Cấp operator key cho đội vận hành, integration key cho backend đối tác. Secret không đặt trong JavaScript, app mobile hoặc repository.
-3. Operator tạo hồ sơ và ghi danh ít nhất 2 ảnh + 2 WAV. `external_id` có namespace theo tenant; hai tổ chức được dùng cùng mã thí sinh.
-4. Backend đối tác tạo phiên, gửi người dùng đến `verify_url`, nhận webhook và luôn đọc lại kết quả server-to-server trước khi cấp quyền thi.
+Receiver example is legacy_demo/app.py. It also accepts verification.completed from old hosted session endpoints. No customer Telegram. Platform alerts go to project Telegram only.
 
-Ví dụ body tạo phiên (header `X-API-Key` chứa integration key):
+## Isolation and retention
 
-```json
-{"person_id":"UUID đã ghi danh","exam_id":"EXAM-501","request_id":"UUID ổn định của attempt","ttl_seconds":900}
-```
+Tenant comes from hashed authenticated credential. Matching employee codes in different companies are supported. Other tenant IDs/check IDs/evidence/filter IDs return 404. Disabled subscription blocks tenant credential use; historical data retained. Demo self-registration can be disabled with ENABLE_DEMO_REGISTRATION=false. No real billing or email verification. Webhook callback must be on an allowlisted host; private deployment requires HTTPS and egress policy.
 
-`request_id` là idempotency key trong tenant. Gửi lại cùng person/exam trả cùng phiên và cùng URL khi còn pending; thay payload trên cùng request ID bị 409. Một phiên bị hết hạn cần request ID mới. Backend người dùng không được tự chọn person ID ngoài danh tính đăng nhập của mình; demo legacy dùng selectbox thay bước đăng nhập để minh họa.
+## Detector interpretation
 
-## Hợp đồng webhook
-
-Body có `id`, `type=verification.completed`, `data` chứa session ID, tenant ID, person ID, exam ID, request ID, status, sequence, expires_at, event_id và model_version. Không gửi ảnh, WAV hoặc embeddings.
-
-- Headers: `X-Webhook-Id`, `X-Webhook-Timestamp` (Unix seconds), `X-Webhook-Signature`.
-- Signature: hex HMAC-SHA256(secret, `timestamp + "." + raw_body`). Phải xác thực trên bytes gốc, so sánh constant-time và giới hạn lệch thời gian 5 phút.
-- Ghi nhận event ID với unique constraint. Delivery là **at-least-once**; phản hồi 2xx cho bản gửi lặp đã xử lý, không thực hiện side effect lần nữa.
-- Retry tối đa 5 lần, backoff 2/4/8/16/32 giây (giới hạn 60); operator có thể đưa delivery failed vào hàng đợi lại.
-- Webhook không được redirect sang host khác. Callback chỉ cấu hình bởi platform admin, bị giới hạn bởi `WEBHOOK_ALLOWED_HOSTS`; private mode bắt buộc HTTPS. Hạ tầng thật cần thêm egress/network policy.
-- `sequence=1` là kết quả model; `sequence=2` là quyết định giám thị. Không giả định webhook đến đúng thứ tự; fetch trạng thái phiên hiện tại từ API để quyết định.
-
-Ví dụ receiver có signature/timestamp/deduplication và kiểm tra backend: `legacy_demo/app.py`. Không dùng trực tiếp demo login/selectbox trong production.
-
-## Chạy demo
-
-```powershell
-docker compose up -d --build
-python pipeline/provision_local_saas.py
-python pipeline/verify_saas.py
-```
-
-Bootstrap media phải đã có (`pipeline/bootstrap_demo.py` nếu môi trường mới). Provision tạo hai thí sinh trong tenant Local English Exam, giữ nguyên dữ liệu demo cũ. Credentials chỉ lưu ở `data/local-saas.json` đã gitignore. Dùng operator key trong file đó để vào portal của khách hàng; không chia sẻ file.
-
-- Hệ thống thi giả lập: http://localhost:18600
-- Portal: http://localhost:18501
-- Hosted verification: mở link do hệ thống thi/portal tạo, không mở `/verify` trống.
-- Bằng chứng: `reports/saas-verification.json`.
-
-Với media bootstrap, camera của người thực không khớp danh tính demo. Để trình diễn allow, upload đúng `data/bootstrap/DEMO-001/face-1.jpg` và `voice-1.wav` cho Candidate DEMO-001. Để dùng khuôn mặt/giọng thật của bạn, tạo hồ sơ và ghi danh trước.
-
-## Giới hạn có chủ đích
-
-Chưa có SSO/mật khẩu người dùng portal, billing, anti-spoof/liveness hoặc xác minh giấy tờ. Portal dùng API keys theo vai trò cho bản môn học. Những chốt về token/replay ở đây bảo vệ giao thức, **không phát hiện replay/deepfake trong nội dung ảnh/giọng**. Kết quả review không phải kết luận gian lận. Raw media mặc định không lưu; embeddings, events, audit vẫn cần retention/deletion policy riêng khi vận hành thật.
+face/voice mismatch indicates identity mismatch. MiniFASNet PAD indicates print/screen suspicion; AASIST indicates synthetic/converted speech suspicion. ECAPA segment change and exact repeated capture are heuristic signals. Unavailable capability is not passed. Physical audio replay, overlapping voices and unseen deepfakes remain explicitly unvalidated. Identity embeddings do not themselves prove liveness.

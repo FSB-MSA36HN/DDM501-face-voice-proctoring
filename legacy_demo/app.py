@@ -149,17 +149,28 @@ async def webhook(request: Request):
     body = await request.body()
     if len(body) > 16384:
         raise HTTPException(413, "Payload too large")
+    try:
+        payload = json.loads(body)
+        tenant_id = payload['data']['tenant_id']
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(422, 'Invalid callback envelope') from exc
+    customer = config()
+    if tenant_id != customer['tenant_id']:
+        extra_file = CONFIG.parent/'company-demo.json'
+        companies = json.loads(extra_file.read_text()).get('companies', []) if extra_file.exists() else []
+        customer = next((c for c in companies if c['tenant_id'] == tenant_id), None)
+        if customer is None:
+            raise HTTPException(403, 'Unknown demo customer')
     timestamp = request.headers.get("X-Webhook-Timestamp", "")
     try:
         if abs(time.time() - int(timestamp)) > 300:
             raise ValueError()
     except ValueError as exc:
         raise HTTPException(401, "Expired webhook") from exc
-    expected = hmac.new(config()["webhook_secret"].encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    expected = hmac.new(customer["webhook_secret"].encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, request.headers.get("X-Webhook-Signature", "")):
         raise HTTPException(401, "Invalid webhook signature")
-    payload = json.loads(body)
-    if payload["id"] != request.headers.get("X-Webhook-Id") or payload["data"]["tenant_id"] != config()["tenant_id"]:
+    if payload["id"] != request.headers.get("X-Webhook-Id") or payload["data"]["tenant_id"] != customer["tenant_id"]:
         raise HTTPException(403, "Webhook tenant/event mismatch")
     with connection() as db:
         result_id = payload['data']['check_id'] if payload['type'] == 'integrity.checked' else payload['data']['id']

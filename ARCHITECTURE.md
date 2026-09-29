@@ -1,11 +1,16 @@
 # System architecture
 
+## Product boundary - 29/09 update
+
+Company backend -> batch /v1/checks -> identity + capture inspectors -> immutable PostgreSQL check/event/outbox -> signed company webhook. MinIO retains suspicious evidence. Tenant portal manages employees/keys/webhooks/history/PDF/CSV; company owns exams and admission. Existing hosted-session/manual-review sequence below is compatibility only. Airflow orchestrates model lifecycle; API/web are runtime services. Grafana/Evidently/Telegram are platform operations.
+
+
 ```mermaid
 flowchart LR
   UI[Streamlit] -->|REST + API key| API[FastAPI serving]
   API --> EMB[YuNet/SFace + ECAPA]
-  API --> PG[(PostgreSQL events/features/feedback)]
-  API -. optional raw .-> S3[(MinIO)]
+  API --> PG[(PostgreSQL employees/checks/events/embeddings)]
+  API -->|suspicious evidence| S3[(MinIO)]
   AF[Airflow] --> SNAP[versioned snapshot]
   SNAP --> DQ[data quality gate] --> TRAIN[feature pairs + threshold calibration]
   TRAIN --> MF[MLflow candidate + evaluation]
@@ -27,7 +32,7 @@ flowchart LR
 
 ## Responsibilities and flows
 
-The product boundary is a B2B SaaS API plus hosted verification and operator portal. Local Compose emulates separate PaaS services; a customer can run the same installation privately. `TenantKey` stores only hashed random credentials. All customer reads/writes scope people/events/sessions/audit to the authenticated tenant. Platform keys manage tenants and ML operations; integration keys cannot enroll biometrics, alter review labels or bypass the hosted session.
+The primary product is a customer-scheduled batch integrity API and company portal. Hosted verification remains a compatibility example. Local Compose emulates separate PaaS services; a customer can run the same installation privately. `TenantKey` stores only hashed random credentials. All customer reads/writes scope people/events/sessions/audit to the authenticated tenant. Platform keys manage tenants and ML operations; integration keys cannot enroll biometrics, alter review labels or bypass the hosted session.
 
 Session creation binds tenant, person, exam, request ID and expiry. The browser carries only a one-session bearer token in a URL fragment, never a tenant API key. An atomic conditional update prevents reuse. Inference event, completed session and webhook outbox commit in one DB transaction. A worker claims pending deliveries with PostgreSQL row locks, signs raw JSON with timestamp/HMAC and retries independently. Delivery can be duplicated after worker crashes; the customer receiver must deduplicate and fetch canonical API state. Manual review increments sequence without rewriting model predictions.
 

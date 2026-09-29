@@ -19,7 +19,7 @@ def build():
     deck = Presentation()
     deck.slide_width, deck.slide_height = Inches(13.333), Inches(7.5)
     navy, white, teal = RGBColor(14,28,48), RGBColor(242,246,252), RGBColor(61,210,182)
-    coverage = read('coverage.json').get('totals',{}).get('percent_covered',0)
+    coverage = read('coverage-maintenance.json').get('totals',{}).get('percent_covered',0)
     monitoring, verification, recovery = (read(n) for n in ('monitoring-verification.json','verification.json','recovery-verification.json'))
     actions = read('github-actions.json').get('runs',[])
 
@@ -51,7 +51,7 @@ def build():
           '1,5 phút. Chỉ tiêu kinh doanh là đề xuất pilot, chưa đo ở khách hàng. Gate 20% là demo và phải được thay bằng chính sách chấp nhận rủi ro khi có dữ liệu thật.')
     s = slide('Full pipeline và các ranh giới trách nhiệm','',
               '2 phút. Mỗi block liên kết với code/DAG/report. Enrollment tạo embeddings; Airflow orchestration dùng snapshot đã fingerprint; Registry điều khiển threshold. Grafana gom telemetry, không thay chức năng điều phối hoặc experiment tracking.')
-    for i,(title,detail) in enumerate([('Data','Consent + enrollment'),('Pipeline','Snapshot → validate'),('Experiments','Identity CV + holdout'),('Registry','RAI → gate → champion'),('Serving','REST + sessions + outbox'),('Monitoring','Grafana → Telegram')]):
+    for i,(title,detail) in enumerate([('Data','Consent + enrollment'),('Pipeline','Snapshot → validate'),('Experiments','Identity CV + holdout'),('Registry','RAI → gate → champion'),('Serving','Batch API + evidence'),('Monitoring','Grafana → Telegram')]):
         x,y = .8+(i%3)*4.2, 1.8+(i//3)*2.3
         shape = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,Inches(x),Inches(y),Inches(3.8),Inches(1.6))
         shape.fill.solid()
