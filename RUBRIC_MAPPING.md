@@ -1,5 +1,10 @@
 # Hai mapping theo yêu cầu DDM501
 
+## Scope alignment - 29/09
+
+Business story: annual employee English assessment, API/webhook integrity verification and separate company portal. Added batch idempotency, suspicious-only evidence, registration, integration-key configuration and scoped PDF/CSV. Exam scheduling/scoring/admission is customer-owned. Airflow/Grafana/Evidently/Telegram satisfy platform MLOps; tenant portal satisfies business reporting. New research detector inference does not substitute a labelled anti-spoof evaluation gate. Updated maintenance evidence is recorded separately in VERIFICATION.md.
+
+
 Đối chiếu `ddm501-final-project-required/DDM501_Final_Project.docx.pdf` và `MLOps_full_pipeline.txt`. Đây là mapping bằng chứng, không tự gán điểm thay giảng viên. Kết quả chạy mới nhất nằm ở [VERIFICATION.md](VERIFICATION.md).
 
 ## 1. Mapping tiêu chí chấm điểm

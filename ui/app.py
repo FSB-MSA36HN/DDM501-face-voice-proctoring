@@ -14,6 +14,10 @@ st.title('Face & Voice Integrity')
 st.caption('Xác minh danh tính cho kỳ đánh giá ngoại ngữ của doanh nghiệp')
 key = st.sidebar.text_input('API key quản trị công ty / nền tảng', type='password')
 headers = {'X-API-Key': key}
+COLUMNS = {'employee_code': 'Mã nhân viên', 'employee_name': 'Họ tên', 'session_id': 'Phiên công ty',
+           'check_id': 'Mã lượt kiểm tra', 'checked_at': 'Thời điểm kiểm tra', 'status_label': 'Kết quả',
+           'reason_labels': 'Dấu hiệu', 'evidence_status': 'Bằng chứng', 'checks': 'Số lượt',
+           'suspicious': 'Lượt nghi vấn', 'first_check_at': 'Bắt đầu nhận check', 'last_check_at': 'Lần check cuối'}
 
 
 def api(method, path, raw=False, **kwargs):
@@ -135,7 +139,7 @@ try:
             report = api('GET', '/v1/company/report', params=params)
             st.caption(report['coverage_note'])
             st.subheader('Khoảng thời gian đã nhận check theo nhân viên / phiên')
-            st.dataframe(pd.DataFrame(report['employees']), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(report['employees']), use_container_width=True, hide_index=True, column_config=COLUMNS)
             a, b = st.columns(2)
             for column, extension in [(a, 'csv'), (b, 'pdf')]:
                 if column.button('Xuất '+extension.upper()):
@@ -144,7 +148,7 @@ try:
         else:
             rows = api('GET', '/v1/checks', params=params)['items']
         fields = ['check_id', 'employee_code', 'employee_name', 'session_id', 'checked_at', 'status_label', 'reason_labels', 'evidence_status']
-        st.dataframe(pd.DataFrame([{k: r[k] for k in fields} for r in rows]), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([{k: r[k] for k in fields} for r in rows]), use_container_width=True, hide_index=True, column_config=COLUMNS)
         if rows:
             r = st.selectbox('Chi tiết lượt kiểm tra', rows, format_func=lambda r:
                              f"{r['employee_code']} - {r['employee_name']} | {r['checked_at']} | {r['status_label']} | {r['check_id'][:8]}")

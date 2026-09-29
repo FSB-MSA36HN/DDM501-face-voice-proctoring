@@ -186,3 +186,56 @@ def test_registration_and_company_key_configuration(checks_api):
     assert client.get('/v1/me', headers={'X-API-Key': key['api_key']}).json()['role'] == 'integration'
     assert client.delete('/v1/company/keys/'+key['id'], headers=headers).status_code == 200
     assert client.get('/v1/me', headers={'X-API-Key': key['api_key']}).status_code == 401
+
+
+def test_reused_capture_is_logged_but_retry_is_not_new_capture(checks_api):
+    client, _, _, media, _ = checks_api
+    owner = company(client, 'Reuse signals')
+    p = employee(client, owner, media)
+    first = send(client, owner, p, media).json()
+    assert first['integrity_status'] == 'verified'
+    assert send(client, owner, p, media).json() == first
+    second = send(client, owner, p, media, request_id='new-capture').json()
+    assert 'capture_reused' in second['reason_codes']
+    assert second['evidence_status'] == 'stored'
+    assert client.get('/v1/checks', headers=owner['operator']).json()['total'] == 2
+
+
+def test_evidence_failure_keeps_business_result_and_outbox(checks_api, monkeypatch):
+    client, engine, store, media, main = checks_api
+    owner = company(client, 'Storage failure')
+    p = employee(client, owner, media)
+    monkeypatch.setattr(main.app.state, 'inspect_integrity', lambda *args: {
+        'face_pad': {'status': 'failed'}, 'audio_spoof': {'status': 'passed'},
+        'speaker_consistency': {'status': 'passed'}})
+    def unavailable(*args):
+        raise OSError('Object storage is unavailable')
+    monkeypatch.setattr(store, 'put_evidence', unavailable)
+    r = send(client, owner, p, media)
+    assert r.status_code == 200
+    assert r.json()['integrity_status'] == 'suspicious' and r.json()['evidence_status'] == 'unavailable'
+    with Session(engine) as db:
+        assert db.scalar(select(WebhookDelivery)).payload['data'] == r.json()
+
+
+def test_capture_validation_filters_and_subscription_disable(checks_api):
+    client, _, _, media, _ = checks_api
+    owner = company(client, 'Subscription')
+    p = employee(client, owner, media)
+    data = {'person_id': p['id'], 'session_id': 'x', 'request_id': 'x', 'consent': 'false'}
+    assert client.post('/v1/checks', headers=owner['integration'], data=data, files=media).status_code == 422
+    assert client.get('/v1/company/report?start=2026-09-30&end=2026-09-01', headers=owner['operator']).status_code == 422
+    assert send(client, owner, p, media).status_code == 200
+    assert client.get('/v1/checks?session_id=other', headers=owner['operator']).json()['total'] == 0
+    assert client.get('/v1/checks?limit=1&offset=1', headers=owner['operator']).json()['items'] == []
+    r = client.patch('/v1/admin/tenants/'+owner['id']+'/subscription',
+                     headers={'X-API-Key': 'checks-platform'}, json={'active': False})
+    assert r.status_code == 200 and r.json()['data_retained']
+    assert client.get('/v1/checks', headers=owner['operator']).status_code == 401
+
+
+def test_csv_formula_values_are_neutralized():
+    from app.company_reports import csv_cell
+    assert csv_cell('=HYPERLINK("malicious")').startswith("'")
+    assert csv_cell('  @SUM(A1)') == "'  @SUM(A1)"
+    assert csv_cell('EMP-001') == 'EMP-001'

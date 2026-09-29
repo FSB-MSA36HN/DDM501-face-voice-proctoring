@@ -1,5 +1,10 @@
 # Capacity and cost plan
 
+## Batch service cost update
+
+Customer schedules requests. At 30s/check, request rate = concurrently tested employees / 30. Suspicious evidence bytes ~= suspicious checks * (image bytes + WAV bytes); enrollment raw and ordinary captures default off. Add PAD/AASIST and multiple ECAPA segments to CPU service time; previous legacy identity-only latency cannot represent full check latency. Data retained for simulated active subscriptions; no commercial pricing/billing yet.
+
+
 ## Pilot targets and measurement
 
 Proposed pilot acceptance targets: at least 70% of genuine sessions automatically allowed, at least 50% less manual review time per 1,000 sessions, review turnaround below 15 minutes, and no increase in the consented pilot FAR baseline. These are requirements to validate with the customer, not measured business results. Record the initial manual workflow, operator minutes, genuine/impostor labels and confidence intervals before evaluating improvement.

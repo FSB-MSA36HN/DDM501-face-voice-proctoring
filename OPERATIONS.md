@@ -1,5 +1,10 @@
 # Vận hành: Grafana, Telegram và CI/CD
 
+## Current company service
+
+Customer business results use API and integrity.checked webhook; platform Telegram receives only technical alerts. Company admins use portal history/evidence/reports. Extra Grafana panels expose aggregate batch outcomes, detector readiness and evidence writes. Detector readiness reflects last execution; missing/short captures may mark capability unavailable/not assessed. No per-company Telegram. Demo registration enabled by default on loopback; disable for production.
+
+
 ## Trang monitoring chính
 
 Mở http://localhost:13000/d/biometric-overview, đăng nhập Grafana `admin` / `admin` ở demo loopback. Portal đưa một link monitoring tới Grafana; các link Airflow/MLflow/MinIO phục vụ quản trị pipeline.

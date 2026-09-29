@@ -1,5 +1,10 @@
 # Mapping monitoring → Grafana
 
+## Platform alerts versus company events
+
+Grafana/Prometheus/Evidently/Telegram serve platform operators. Added integrity checks by status, detector availability and suspicious-evidence storage outcomes. Model/service/collector/evidence failures trigger technical alerts. Per-check employee signals go immediately to company API/webhook and tenant history; portal exports PDF/CSV and protected media. No company needs Grafana credentials. Identity feedback performance and broader capture-integrity statuses are distinct metrics.
+
+
 Trang chính: http://localhost:13000/d/biometric-overview. Portal đưa một link monitoring tới trang này; Airflow/MLflow/MinIO tiếp tục phục vụ thao tác quản trị tương ứng.
 
 | Phần monitoring | Nguồn | Hiển thị tại Grafana |

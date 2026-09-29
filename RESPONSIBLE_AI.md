@@ -1,5 +1,10 @@
 # Responsible AI and privacy
 
+## Integrity detectors - MVP boundary
+
+Primary portal reports model signals, not exam verdicts. Missing detector produces inconclusive, not an all-clear. MiniFASNet single-image PAD and AASIST LA inference are implemented; no customer anti-spoof benchmark or universal deepfake/replay accuracy is claimed. ECAPA segment change is heuristic, not overlap diarization. Exact media reuse may have legitimate retry/capture causes; idempotent retries do not create reuse alerts. Raw ordinary checks are discarded; suspicious media needs consent and restricted operator access. Historical statements that anti-spoof is entirely absent now refer to the pre-maintenance baseline.
+
+
 This is decision support. A mismatch becomes `REVIEW`, never an automatic accusation. Quality is not liveness, face PAD or voice anti-spoofing.
 
 ## Fairness

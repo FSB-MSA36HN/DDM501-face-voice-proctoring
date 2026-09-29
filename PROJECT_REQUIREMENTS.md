@@ -1,54 +1,27 @@
-# Problem definition and requirements
+# Product requirements - scope approved 29/09/2026
 
-## Problem and business context
+## Business and users
 
-Remote English examinations need a low-friction way to check that the enrolled candidate remains the person taking the exam. Manual review of every session is costly; automatic rejection from imperfect biometrics is harmful. This system performs declared-identity face + voice verification and routes uncertain or failed checks to a human review queue. It is an integrity signal, not proof of cheating.
+Doanh nghi?p t? ch?c k? ??nh gi? ngo?i ng? th??ng ni?n, c?n t?n hi?u ch?ng thi h?/gi? m?o m? v?n d?ng ph?n m?m thi hi?n t?i. Admin c?ng ty qu?n l? nh?n vi?n v? b?o c?o. Backend c?ng ty g?i batch face/voice theo l?ch ri?ng v? quy?t ??nh nghi?p v?. Platform team v?n h?nh model, web v? MLOps.
 
-## Users and use cases
+## Required product capabilities
 
-- Customer software vendor: integrate hosted verification using REST sessions and signed webhook callbacks without replacing the existing exam system.
-- Tenant operator: manage only their organization's enrollment, sessions, reviews, feedback and outbox retries.
-- Platform administrator: onboard tenants, issue/revoke scoped credentials, operate ML pipeline/monitoring; supply a private deployment package when requested.
+- Simulated active company registration, tenant isolation, operator/integration keys and approved webhook configuration.
+- Employee identifiers scoped to company; face/WAV enrollment via portal and API, consent supplied by customer, embeddings in PostgreSQL.
+- POST /v1/checks: identity matching, capture-integrity details, stable codes/labels, request idempotency, immutable history and signed outbox callback.
+- Face count, face PAD, synthetic/converted audio signal, exact capture reuse and speaker-change heuristic; unavailable/insufficient checks explicitly inconclusive.
+- Suspicious-only MinIO image/audio evidence with scoped authenticated downloads; ordinary raw captures discarded.
+- Employee/session first-last check ranges and history; PDF/CSV filters and export. No exam scores/admission decisions in primary portal.
+- Existing hosted session/manual review APIs remain compatibility examples, outside required product flow.
 
-- Candidate: enroll multiple consented face/WAV samples and submit a fresh verification.
-- Proctor: inspect the decision, modality scores, quality, reason codes and model version; add ground-truth feedback.
-- ML engineer: reproduce data validation/calibration, compare MLflow runs and promote only a gated candidate.
-- Operator: inspect SLOs, PSI/Evidently drift, receive alerts and roll back by moving the MLflow `champion` alias.
+## Required course MLOps
 
-## Prioritized requirements
+Snapshot/lineage -> validation -> calibration/CV/holdout -> MLflow Registry -> RAI -> promotion -> serving reload -> Grafana/Evidently -> platform Telegram. Docker, CI/CD, self-hosted demo deployment, backup/rollback evidence, rubric mapping, business report and presentation.
 
-| Priority | Requirement |
-|---|---|
-| Must | Versioned REST API, authentication, validation, explainable `ALLOW`/`REVIEW`, immutable event audit |
-| Must | Airflow pipeline from snapshot and data quality through calibration, evaluation, Registry and deployment |
-| Must | MLflow params/metrics/artifacts/signature and `candidate`/`champion` aliases |
-| Must | Prometheus, Grafana, Alertmanager, Evidently report, PSI simulation and human-feedback performance |
-| Must | Docker Compose health checks, tests and GitHub Actions |
-| Must | Tenant isolation, expiring single-use sessions, consent, backend-bound results, signed durable webhook delivery |
-| Must | Local legacy-system integration demo and admin/operator portal |
-| Should | Portable serving image with pinned weights; documented private/on-premise overlay |
-| Should | Raw biometric storage off by default, pinned datasets/models, review feedback and quality-slice audit |
-| Could | Face PAD, audio anti-spoof, ASR phrase challenge, GPU autoscaling and canary routing |
+## Boundaries and acceptance
 
-## Target metrics
+Cadence/batch capture belongs to customer. Registration is simulated, not paid billing or verified organization onboarding. API keys serve as course MVP access control; no production SSO. Identity gates remain demo FAR/FRR <=20%; coverage of declared first-party modules >=80%. No local anti-spoof accuracy gate is claimed without labelled benchmark. Two-company isolation must pass on people/checks/exports/evidence/keys. API success and callback must describe the same check. Telegram is for platform operations only. Data retained while simulated subscription active; disabled subscription denies tenant access without data deletion.
 
-| Level | Metric | Target / gate |
-|---|---|---|
-| Business | automatically allowed genuine sessions | proposed pilot ≥70%, with no increase in the agreed false-accept bound; measure against consented baseline |
-| Business | manual review effort per 1,000 sessions | proposed pilot ≥50% reduction; measure operator minutes before/after |
-| Business | reviewed-event turnaround | < 15 minutes during exams |
-| Model | FAR and FRR per modality | each <= 20% demo promotion gate; stricter threshold set from pilot risk policy |
-| Model | quality-slice accuracy gap | <= 10 percentage points with >=20 human-reviewed cases and >=5 of each class per comparable slice |
-| Data | invalid/duplicate/inconsistent embeddings | 0 entering training |
-| Drift | PSI per production feature | investigate >=0.1; alert >0.2 for 2 minutes |
-| System | availability | >=99.5% pilot target |
-| System | p95 verification latency | <=2 seconds excluding first model warm-up |
-| Engineering | declared API/monitoring/evaluation coverage | >=80%; whole `app`, whole `monitoring`, snapshot/evaluation/validation/promotion/RAI modules |
-| Integration | accepted duplicate session submissions / cross-tenant accesses | 0 in integration tests |
-| Integration | webhook delivery | at-least-once with retry; receiver deduplicates, 5 attempts before operator intervention |
+## Known development limits
 
-## Constraints and non-goals
-
-CPU-first local demo, 50–100 synthetic cross-dataset identities, no demographic ground truth and no claim of production biometric accuracy. `REVIEW` always requires a person. PAD/deepfake detection, high-concurrency scaling and regulatory certification are explicitly outside the MVP.
-
-Capacity equations, assumptions and a cost worksheet are in [SCALABILITY_COST.md](SCALABILITY_COST.md). Business targets are proposed requirements, not achieved customer outcomes.
+CPU/local deployment, synthetic cross-dataset bootstrap identities, no validated demographic fairness or customer anti-spoof accuracy. Single-image PAD is not universal video deepfake detection. Segment consistency is not overlap diarization. Physical playback is not proven by ASVspoof-LA. Consent scope, real labels, onboarding verification, SSO/billing/deletion, temporal liveness and cloud scaling are future pilot work. Proposed business improvements are not measured customer outcomes.

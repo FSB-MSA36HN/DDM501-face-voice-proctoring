@@ -89,6 +89,7 @@ class IntegrityInspector:
         from .vendor.aasist import Model
         config = json.loads((Path(__file__).parent/'vendor/aasist_config.json').read_text())['model_config']
         if self.audio_model is None:
+            torch.set_num_threads(2)
             self.audio_model = Model(config).cpu()
             self.audio_model.load_state_dict(torch.load(path, map_location='cpu', weights_only=True))
             self.audio_model.eval()

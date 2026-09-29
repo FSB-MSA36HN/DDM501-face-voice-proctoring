@@ -1,5 +1,10 @@
 # Triển khai local, PaaS và private/on-premise
 
+## Maintenance deployment
+
+API image now includes Unicode PDF fonts, ONNX runtime and pretrained integrity wrappers. Portable serving image packages minifasnet_v2.onnx and aasist.pth alongside identity weights. download_models.py pins revisions/checksums. Suspicious evidence uses MinIO even when STORE_RAW_BIOMETRICS=false (that flag concerns raw enrollment). Preserve volumes and allow additive migration of outbox session_id to nullable.
+
+
 ## Quyết định kiến trúc
 
 SaaS là mô hình cung cấp sản phẩm; PaaS là cách vận hành container. Local Docker Compose mô phỏng sự phân tách này, không được gọi là đã deploy lên public cloud. Private/on-premise là một installation riêng cùng code/API contract cho từng khách hàng.
