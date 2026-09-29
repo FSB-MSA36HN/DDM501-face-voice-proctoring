@@ -2,7 +2,7 @@
 
 ## Business and users
 
-Doanh nghi?p t? ch?c k? ??nh gi? ngo?i ng? th??ng ni?n, c?n t?n hi?u ch?ng thi h?/gi? m?o m? v?n d?ng ph?n m?m thi hi?n t?i. Admin c?ng ty qu?n l? nh?n vi?n v? b?o c?o. Backend c?ng ty g?i batch face/voice theo l?ch ri?ng v? quy?t ??nh nghi?p v?. Platform team v?n h?nh model, web v? MLOps.
+Doanh nghiệp đánh giá ngoại ngữ thường niên cần kiểm soát thi hộ/media giả. Admin công ty quản lý nhân viên và báo cáo; backend gửi batch theo lịch riêng và quyết định nghiệp vụ. Đội nền tảng vận hành model, web và MLOps.
 
 ## Required product capabilities
 

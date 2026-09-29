@@ -1,28 +1,28 @@
 # DDM501 - Face & Voice Integrity Service
 
-D?ch v? x?c minh face/voice theo batch cho doanh nghi?p t? ch?c ??nh gi? ngo?i ng? th??ng ni?n. H? th?ng c?ng ty gi? b?i thi, l?ch capture, ?i?m v? quy?t ??nh nghi?p v?. D? ?n cung c?p API/webhook, portal c?ng ty v? full pipeline MLOps m?n h?c.
+Dịch vụ xác minh face/voice theo batch cho doanh nghiệp tổ chức kỳ đánh giá ngoại ngữ thường niên. Công ty giữ hệ thống thi, lịch capture, điểm và quyết định nghiệp vụ. Dự án cung cấp API/webhook, portal công ty và full pipeline MLOps.
 
-## Hai kh?ng gian v?n h?nh
+## Hai không gian vận hành
 
-- C?ng ty: ??ng k? g?i gi? l?p, qu?n l? nh?n vi?n, ghi danh qua camera/audio/upload ho?c API, c?p integration key, webhook, check history, b?ng ch?ng nghi v?n, PDF/CSV.
-- N?n t?ng: Airflow/MLflow/CI-CD v? Grafana/Evidently/Telegram. Tenant portal kh?ng c?p quy?n truy c?p monitoring to?n h? th?ng.
+- Công ty: đăng ký gói giả lập, quản lý nhân viên, ghi danh qua camera/audio/upload hoặc API, integration keys, webhook, lịch sử, bằng chứng nghi vấn và PDF/CSV.
+- Nền tảng: Airflow/MLflow/CI-CD cùng Grafana/Evidently/Telegram. Company portal chỉ có dữ liệu và chức năng của công ty đó.
 
-## Demo
+## Demo và API
 
-Portal http://localhost:18501; customer integration example http://localhost:18600; API http://localhost:18100/docs.
+Portal http://localhost:18501; customer example http://localhost:18600; API http://localhost:18100/docs.
 Grafana http://localhost:13000/d/biometric-overview; Airflow http://localhost:18081; MLflow http://localhost:15030; MinIO http://localhost:19101.
 
-??ng k? c?ng ty ? portal khi ch?a ??ng nh?p, l?u operator key ???c tr? m?t l?n. Ghi danh >=2 ?nh/WAV, t?o integration key v? c?u h?nh webhook. Backend g?i POST /v1/checks v?i person_id, session_id, request_id, consent, face_file v? voice_file. V? d? 30 gi?y/?nh v? 10 gi?y/audio l? cadence ph?a kh?ch h?ng.
+Đăng ký công ty tại portal, lưu operator key được trả một lần. Ghi danh >=2 ảnh/WAV, cấp integration key và cấu hình webhook. Backend gọi POST /v1/checks với person_id, session_id, request_id, consent, face_file và voice_file. Nhịp 30 giây và WAV 10 giây là ví dụ do khách hàng cấu hình.
 
-## Model v? b?ng ch?ng
+## Model và dữ liệu
 
-YuNet/SFace + ECAPA x?c minh 1:1. MiniFASNet face PAD v? AASIST audio anti-spoof l? detector nghi?n c?u pretrained/pinned; ECAPA segments l? heuristic thay ng??i n?i. K?t qu? verified/suspicious/inconclusive th? hi?n ki?m tra ?? th?c hi?n. Ch?a ch?ng minh m?i deepfake, physical replay ho?c simultaneous speakers. Missing detector kh?ng ???c coi passed.
+SFace/YuNet + ECAPA xác minh danh tính. MiniFASNet face PAD và AASIST audio anti-spoof là detector nghiên cứu pretrained/pinned. ECAPA segments là heuristic thay người nói. Missing detector trả inconclusive. Chưa có benchmark khách hàng cho mọi deepfake, physical replay hoặc simultaneous voices.
 
-PostgreSQL l?u embedding/metadata/checks. MinIO gi? suspicious image/WAV v? MLflow artifacts. Raw enrollment v? media checks h?p l? m?c ??nh kh?ng gi?. Tenant isolation ?p d?ng c? l?ch s?, export v? evidence download. Webhook HMAC c? durable outbox/retry; receiver deduplicates.
+PostgreSQL lưu embedding/metadata/checks; MinIO lưu suspicious evidence và MLflow artifacts. Raw enrollment và media check hợp lệ không được giữ mặc định. Lịch sử, exports và evidence downloads đều tenant-scoped. Webhook HMAC có durable outbox/retry; receiver phải deduplicate.
 
-## Ch?y v? ki?m ch?ng
+## Chạy và kiểm chứng
 
-Kh?ng overwrite .env ?? c? v? kh?ng down -v. Xem PROJECT_STATE.md v? deployment ngo?i OneDrive v? runtime paths.
+Giữ nguyên .env và volumes đã có; xem PROJECT_STATE.md về deployment ngoài OneDrive.
 
 ```powershell
 docker compose up -d --build --wait
@@ -30,6 +30,6 @@ python pipeline/verify_company_service.py
 python pipeline/verify_monitoring_centre.py
 ```
 
-[Report d? ?n](PROJECT_REPORT.md) ? [Scope](PROJECT_REQUIREMENTS.md) ? [Ki?n tr?c](ARCHITECTURE.md) ? [API integration](SAAS_INTEGRATION.md) ? [Mapping rubric/pipeline](RUBRIC_MAPPING.md) ? [B?ng ch?ng](VERIFICATION.md) ? [V?n h?nh](OPERATIONS.md) ? [Gi?i h?n](RESPONSIBLE_AI.md).
+[Report](PROJECT_REPORT.md) · [Scope](PROJECT_REQUIREMENTS.md) · [Kiến trúc](ARCHITECTURE.md) · [Tích hợp](SAAS_INTEGRATION.md) · [Mapping](RUBRIC_MAPPING.md) · [Bằng chứng](VERIFICATION.md) · [Vận hành](OPERATIONS.md).
 
-GitHub: https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring. Grafana/Airflow demo admin/admin, loopback only. Kh?ng ??a secrets/keys/media/backup v?o Git.
+GitHub https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring. Demo Grafana/Airflow admin/admin, loopback only. Không commit credentials, biometric media hoặc backups.
