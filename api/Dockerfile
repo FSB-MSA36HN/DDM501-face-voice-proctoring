@@ -9,7 +9,7 @@ FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /srv
-RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libsndfile1 curl \
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libsndfile1 curl fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=dependency-builder /wheels /wheels
 COPY requirements-models.txt ./

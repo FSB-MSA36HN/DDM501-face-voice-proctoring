@@ -183,7 +183,7 @@ async def enroll(
 
 async def perform_verification(
     person_id: str, session_id: str, face_file: UploadFile | None, voice_file: UploadFile | None,
-    db: Session, principal: Principal,
+    db: Session, principal: Principal, capture_errors: bool = False,
 ) -> VerificationOut:
     started = time.perf_counter()
     person = get_person(db, person_id, principal)
@@ -207,6 +207,9 @@ async def perform_verification(
         try:
             result = await run_in_threadpool(biometrics.face if modality == "face" else biometrics.voice, payload)
         except BiometricError as exc:
+            if capture_errors:
+                reasons.append(exc.code or f"invalid_{modality}")
+                continue
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         scores[modality] = max(cosine(result.embedding, reference) for reference in enrolled[modality])
         qualities[modality] = result.quality
@@ -322,10 +325,19 @@ def reload_model() -> dict:
     return runtime.__dict__
 
 
+from .checks import router as checks_router  # noqa: E402
+from .company import router as company_router  # noqa: E402
+from .company_reports import router as reports_router  # noqa: E402
+from .integrity import IntegrityInspector  # noqa: E402
 from .saas import router as saas_router  # noqa: E402
 
 app.state.perform_verification = perform_verification
+integrity_inspector = IntegrityInspector(settings, biometrics)
+app.state.inspect_integrity = integrity_inspector.inspect
 app.include_router(saas_router)
+app.include_router(checks_router)
+app.include_router(company_router)
+app.include_router(reports_router)
 
 
 @app.exception_handler(Exception)

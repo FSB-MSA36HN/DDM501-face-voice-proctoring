@@ -10,13 +10,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="Legacy Exam Integration Demo")
 CONFIG = Path(os.getenv("SAAS_CONFIG", "/config/local-saas.json"))
 DATABASE = os.getenv("LEGACY_DATABASE", "/data/legacy.db")
+
+
+@app.post('/check')
+async def check_batch(request: Request, person_id: str = Form(...), session_id: str = Form(...),
+                      request_id: str = Form(...), consent: bool = Form(...),
+                      face_file: UploadFile = File(...), voice_file: UploadFile = File(...)):
+    browser_id(request)
+    files = {}
+    for key, upload in [('face_file', face_file), ('voice_file', voice_file)]:
+        payload = await upload.read(12*1024*1024+1)
+        if len(payload) > 12*1024*1024:
+            raise HTTPException(413, 'File exceeds demo limit')
+        files[key] = (upload.filename, payload, upload.content_type)
+    return api('POST', '/v1/checks', data={'person_id': person_id, 'session_id': session_id,
+                                        'request_id': request_id, 'consent': str(consent).lower()}, files=files)
 
 
 def config():
@@ -147,6 +162,7 @@ async def webhook(request: Request):
     if payload["id"] != request.headers.get("X-Webhook-Id") or payload["data"]["tenant_id"] != config()["tenant_id"]:
         raise HTTPException(403, "Webhook tenant/event mismatch")
     with connection() as db:
+        result_id = payload['data']['check_id'] if payload['type'] == 'integrity.checked' else payload['data']['id']
         inserted = db.execute("INSERT OR IGNORE INTO receipts VALUES (?, ?, ?)",
-                               (payload["id"], payload["data"]["id"], int(time.time())))
+                               (payload["id"], result_id, int(time.time())))
     return JSONResponse({"received": True, "duplicate": inserted.rowcount == 0})

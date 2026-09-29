@@ -1,6 +1,17 @@
 groups:
   - name: biometric-ml
     rules:
+      - alert: IntegrityDetectorUnavailable
+        expr: biometric_integrity_capability_ready == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Capture integrity detector unavailable; customer checks may be inconclusive"
+      - alert: EvidenceStorageFailed
+        expr: increase(biometric_evidence_writes_total{outcome="failure"}[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Suspicious-check evidence could not be persisted"
       - alert: BiometricSyntheticPerformanceDegraded
         expr: biometric_reviewed_performance{source="synthetic",metric="accuracy",window="current"} < 0.8 and on(source) biometric_reviewed_report_success{source="synthetic"} == 1
         for: 2m

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     webhook_allowed_hosts: str = "legacy-demo,localhost,127.0.0.1"
     allow_insecure_webhooks: bool = True
     webhook_max_attempts: int = 5
+    enable_demo_registration: bool = True
+    face_spoof_threshold: float = 0.5
+    audio_spoof_threshold: float = 0.5
+    speaker_change_threshold: float = 0.35
 
 
 @lru_cache
