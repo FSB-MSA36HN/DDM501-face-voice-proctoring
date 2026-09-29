@@ -69,7 +69,7 @@ def build():
           'Tenant-scoped API keys; role operator / integration / platform.\nBatch có consent, request_id và lịch sử bất biến.\nCallback HMAC + outbox + retry + dedup.\nDemo hai công ty: identity đúng/sai, evidence và export.',
           '2,5 phút. Mở customer demo :18600 và portal :18501. Ghi danh, gọi batch check, kiểm tra webhook và bằng chứng, xuất PDF/CSV. Quyết định thi thuộc khách hàng. Browser camera/microphone cần người dùng chấp nhận quyền và test trên thiết bị thật.')
     slide('Grafana là trung tâm monitoring',
-          'Service readiness · p50/p95 · errors · training quality\nPSI/Evidently · Registry/CV/holdout · human/synthetic performance\nSessions/review SLA · webhooks · Airflow/RAI · CPU/RAM/logs\nReport cùng origin, yêu cầu đăng nhập Grafana.',
+          'Service readiness · p50/p95 · errors · training quality\nPSI/Evidently · Registry/CV/holdout · human/synthetic performance\nBatch/detector/evidence · webhooks · Airflow/RAI · CPU/RAM/logs\nReport cùng origin, yêu cầu đăng nhập Grafana.',
           '2 phút. Mở /d/biometric-overview. Dùng tenant/project/service selector. Grafana là trang quan sát chính; Airflow/MLflow giữ chức năng điều khiển. Human và synthetic là hai nguồn riêng.')
     slide('Cảnh báo và vận hành',
           'Prometheus rules → Alertmanager → ops-monitor → Telegram.\nFiring và resolved được gửi; lỗi transport dẫn tới retry.\nDrift >0,2; service/collector down; data invalid; webhook failed.\nBackup restore vào DB riêng; rollback alias rồi khôi phục champion.',

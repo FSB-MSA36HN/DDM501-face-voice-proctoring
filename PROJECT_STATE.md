@@ -1,4 +1,14 @@
-# Trạng thái tiếp tục — DDM501, 28/09/2026
+# Trạng thái tiếp tục — DDM501, 29/09/2026
+
+## Maintenance theo scope công ty đã chốt
+
+Airflow điều phối MLOps (dữ liệu → đánh giá → cập nhật model). Công ty giữ hệ thống thi, nhịp capture, điểm và quyết định nghiệp vụ. Dịch vụ nhận batch ảnh/WAV qua `/v1/checks`, trả kết quả tức thời và signed webhook; portal công ty quản lý nhân viên, ghi danh, API/webhook, lịch sử và PDF/CSV. Grafana/Evidently/Telegram dành cho vận hành nền tảng, không gửi Telegram riêng cho công ty.
+
+PostgreSQL quản lý tenant/nhân viên/embedding/metadata; MinIO lưu artifacts và bằng chứng ảnh/audio của check suspicious. Check thường không giữ raw media. Đăng ký thêm công ty, integration keys và subscription deactivation đã có; tenant isolation áp dụng cho check, evidence và exports.
+
+Live ngày 29/09: hai công ty có cùng mã EMP-001; same identity verified, other identity suspicious; evidence lưu và tải có xác thực; cross-tenant 404; retry idempotent và conflict 409; PDF/CSV và first/last check ranges; callbacks acknowledged HTTP 200. Ảnh ghép hai khuôn mặt/audio ghép hai người tạo `multiple_faces` và `multiple_speakers_suspected`. Media bootstrap/tiled là thử vận chuyển/inference, không phải benchmark người dùng thật.
+
+Quality maintenance: **65 tests pass, coverage 86,50%**; Grafana **62 panels, 67 queries**. Portal được kiểm tra bằng Streamlit AppTest với API thật: trang đăng ký, sáu trang cho mỗi công ty và inline CSV export. Camera/mic và trình duyệt download/playback vẫn cần acceptance trên thiết bị thật. Xem [VERIFICATION.md](VERIFICATION.md) và [PROJECT_REPORT.md](PROJECT_REPORT.md) cho kết quả cuối; các mục bên dưới giữ bằng chứng baseline 28/09.
 
 ## Phạm vi và quyền đã có
 
@@ -64,7 +74,7 @@ Grafana/Airflow demo `admin/admin`, loopback only. Monitoring là quyền platfo
 ## Còn cần người dùng/dữ liệu ngoài code
 
 1. Camera/microphone browser acceptance và partner backend thật. Upload media/API/legacy simulator đã kiểm chứng.
-2. Dữ liệu biometric có consent, nhãn human và demographic evaluation hợp lệ. Human fairness hiện `insufficient_data`; synthetic bootstrap không chứng minh production accuracy. Chưa face PAD/audio anti-spoof.
+2. Dữ liệu biometric có consent, nhãn human và demographic evaluation hợp lệ. Human fairness hiện `insufficient_data`; synthetic bootstrap không chứng minh production accuracy. MiniFASNet PAD/AASIST đã có inference; chưa có benchmark anti-spoof khách hàng. Physical audio replay, unseen video deepfake và simultaneous speaker overlap chưa được xác thực.
 3. Tên/vai trò/contribution thật, meaningful commits của thành viên, demo/Q&A. Repo đã xác minh public qua GitHub API ngày 28/09, đáp ứng điều kiện truy cập trong rubric. Không tạo bằng chứng giả.
 4. Cloud/customer host/domain/TLS/SSO và SLA/capacity pilot nếu muốn rollout ngoài local. Chưa provision cloud trả phí; local restore không chứng minh cloud disaster recovery.
 

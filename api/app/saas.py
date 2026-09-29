@@ -264,6 +264,8 @@ def review(session_id: str, body: ReviewDecision, db: Session = Depends(get_db),
 @router.get("/v1/webhooks")
 def deliveries(db: Session = Depends(get_db), principal: Principal = Depends(operator)):
     return [{"id": row.id, "session_id": row.session_id, "status": row.status,
+             "event_type": row.payload.get('type'),
+             "check_id": row.payload.get('data', {}).get('check_id'),
              "attempts": row.attempts, "last_status_code": row.last_status_code}
             for row in db.scalars(select(WebhookDelivery).where(WebhookDelivery.tenant_id == principal.tenant_id)
                                    .order_by(WebhookDelivery.created_at.desc()).limit(100))]

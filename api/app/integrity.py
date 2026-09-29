@@ -7,9 +7,9 @@ import cv2
 import numpy as np
 from prometheus_client import Gauge
 
-from .biometrics import _decode_audio, _decode_image, cosine
+from .biometrics import BiometricError, _decode_audio, _decode_image, cosine
 
-CAPABILITY = Gauge('biometric_integrity_capability_ready', 'Last detector execution success', ['capability'])
+CAPABILITY = Gauge('biometric_integrity_capability_ready', 'Last detector execution had no operational failure', ['capability'])
 
 
 def speaker_consistency(embeddings, threshold=.35):
@@ -40,7 +40,11 @@ class IntegrityInspector:
                                          ('speaker_consistency', self.speakers, voice)]:
                 try:
                     results[key] = method(payload)
-                    CAPABILITY.labels(capability=key).set(results[key]['status'] in {'passed', 'failed'})
+                    # A healthy detector may decline a multi-face or short-audio capture.
+                    CAPABILITY.labels(capability=key).set(1)
+                except BiometricError:
+                    # Invalid customer media is not a platform outage; preserve the last readiness value.
+                    results[key] = {'status': 'not_assessed', 'reason': 'Invalid capture'}
                 except Exception as exc:
                     CAPABILITY.labels(capability=key).set(0)
                     results[key] = {'status': 'unavailable', 'reason': type(exc).__name__}

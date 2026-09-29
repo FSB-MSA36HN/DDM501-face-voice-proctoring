@@ -1,6 +1,7 @@
 """Exercise actual customer checks/storage/export isolation; never manufacture human labels."""
 import io
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +53,7 @@ def main():
     a, b = config['companies']
     session = 'ANNUAL-'+uuid.uuid4().hex[:8]
     outputs = []
+    previous_deliveries = {r['id'] for r in call('GET', '/v1/webhooks', a['operator_key']).json()}
     for name, folder in [('same_identity', 'DEMO-001'), ('other_identity', 'DEMO-002')]:
         path = ROOT/'data/bootstrap'/folder
         rate, wave = wavfile.read(path/'voice-1.wav')
@@ -89,11 +91,22 @@ def main():
         call('GET', '/v1/company/report.'+extension, b['operator_key'], expected=404, params=filters)
         (ROOT/'reports'/('company-demo.'+extension)).write_bytes(r.content)
     results['company_exports_and_ranges'] = 'pass'
+    deadline = time.monotonic() + 60
+    while True:
+        deliveries = [r for r in call('GET', '/v1/webhooks', a['operator_key']).json()
+                      if r['id'] not in previous_deliveries]
+        if len(deliveries) == len(outputs) and all(r['status'] == 'delivered' and r['last_status_code'] == 200 for r in deliveries):
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Customer callback did not acknowledge every check within 60 seconds')
+        time.sleep(2)
+    results['signed_customer_callbacks'] = 'pass'
     print(json.dumps({'checks': results, 'scenarios': [{'scenario': o['scenario'], 'status': o['result']['integrity_status'],
                                                       'capabilities': o['result']['capabilities']} for o in outputs]}, ensure_ascii=True))
     (ROOT/'reports/company-verification.json').write_text(json.dumps({
         'checked_at': datetime.now(timezone.utc).isoformat(), 'status': 'pass', 'checks': results,
-        'scenarios': outputs, 'note': 'Bootstrap/tiled media checks transport/inference, not real-user anti-spoof accuracy.'}, indent=2), encoding='utf-8')
+        'scenarios': outputs, 'deliveries': deliveries,
+        'note': 'Bootstrap/tiled media checks transport/inference, not real-user anti-spoof accuracy.'}, indent=2), encoding='utf-8')
 
 
 if __name__ == '__main__':

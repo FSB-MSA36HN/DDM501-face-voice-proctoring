@@ -1,4 +1,22 @@
-# Kiểm chứng MLOps full pipeline — 28/09/2026 (Asia/Saigon)
+# Kiểm chứng MLOps và company service (Asia/Saigon)
+
+## Maintenance 29/09/2026
+
+| Hạng mục | Bằng chứng mới |
+|---|---|
+| Quality | **65 tests pass, coverage 86,50%**; Ruff, compile, generated-dashboard diff và Compose config pass |
+| Company batch | Hai tenant đăng ký, cùng mã nhân viên, SFace/ECAPA + MiniFASNet/AASIST thật; same identity verified, other identity suspicious |
+| API consistency | Retry cùng request/payload trả cùng check; thay payload 409; kết quả/check/event/outbox cùng transaction |
+| Isolation/storage | Check/evidence/export khác tenant 404; thiếu key 401; suspicious image/WAV lưu MinIO; ordinary check không giữ raw |
+| Business reports | JSON/PDF/CSV theo nhân viên/phiên/ngày; first/last check ranges, labels và evidence status; không có điểm thi |
+| Callbacks | Signed customer webhooks delivered, receiver HTTP 200; verifier poll kiểm tra ACK cho từng check |
+| Multi-capture | Ảnh ghép hai mặt và audio ghép hai người có `multiple_faces`, `multiple_speakers_suspected`; chỉ là scenario inference |
+| Portal | Streamlit AppTest chạy sáu trang của cả hai tenant, đăng ký anonymous và inline CSV export với API thật |
+| Monitoring | 62 panels, 67 queries; dashboard queries, freshness, protected reports/sources pass; short/multi-face capture không bị coi là detector outage |
+
+Artifacts mới: `reports/company-verification.json`, `multiple-capture-verification.json`, `company-demo.pdf/csv`, `ui-verification.log`, `coverage-maintenance.json`, `tests-maintenance.xml`, `monitoring-verification.json`. Không đưa credentials/media/runtime artifacts lên GitHub. Camera/mic, browser playback/download và anti-spoof customer benchmark chưa được xác thực bằng những checks này.
+
+## Baseline full pipeline 28/09/2026
 
 Bằng chứng runtime tại `reports/verification.json`, `monitoring-verification.json`, `coverage.json`, `saas-verification.json`, `paas-verification.json`, `recovery-verification.json`, `github-actions.json`. Các file này/data/models/backups chứa dữ liệu runtime, được gitignore. Tài liệu ghi kết quả thực chạy; không thay thế điểm do giảng viên chấm.
 

@@ -109,6 +109,9 @@ def test_batch_check_integration_idempotency_and_webhook(checks_api):
     assert send(client, owner, person, media).json()['check_id'] == result['check_id']
     assert send(client, owner, person, media, session_id='DIFFERENT').status_code == 409
     assert store.objects == {}
+    delivery = client.get('/v1/webhooks', headers=owner['operator']).json()[0]
+    assert delivery['event_type'] == 'integrity.checked'
+    assert delivery['check_id'] == result['check_id']
     with Session(engine) as db:
         rows = db.scalars(select(WebhookDelivery)).all()
         assert len(rows) == 1
