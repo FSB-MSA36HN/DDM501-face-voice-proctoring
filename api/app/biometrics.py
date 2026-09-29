@@ -15,7 +15,9 @@ from .config import Settings
 
 
 class BiometricError(ValueError):
-    pass
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -54,17 +56,17 @@ def _face_quality(image: np.ndarray) -> float:
     return round(0.45 * exposure + 0.55 * sharpness, 4)
 
 
-def _decode_audio(payload: bytes) -> tuple[int, np.ndarray]:
+def _decode_audio(payload: bytes, normalize_peak: bool = True) -> tuple[int, np.ndarray]:
     try:
         rate, signal = wavfile.read(io.BytesIO(payload))
     except Exception as exc:
         raise BiometricError("Audio phải là WAV PCM") from exc
-    if signal.ndim == 2:
-        signal = signal.mean(axis=1)
     if np.issubdtype(signal.dtype, np.integer):
         signal = signal.astype(np.float32) / max(abs(np.iinfo(signal.dtype).min), np.iinfo(signal.dtype).max)
     else:
         signal = signal.astype(np.float32)
+    if signal.ndim == 2:
+        signal = signal.mean(axis=1)
     if rate != 16000:
         divisor = math.gcd(rate, 16000)
         signal = resample_poly(signal, 16000 // divisor, rate // divisor).astype(np.float32)
@@ -75,7 +77,7 @@ def _decode_audio(payload: bytes) -> tuple[int, np.ndarray]:
     peak = float(np.max(np.abs(signal)))
     if peak < 0.005:
         raise BiometricError("Audio quá nhỏ hoặc im lặng")
-    return rate, signal / max(peak, 1e-8)
+    return rate, signal / max(peak, 1e-8) if normalize_peak else signal
 
 
 def _voice_quality(signal: np.ndarray, rate: int) -> float:
@@ -147,7 +149,9 @@ class BiometricEngine:
             self._face_detector.setInputSize((width, height))
             _, faces = self._face_detector.detect(image)
             if faces is None or len(faces) != 1:
-                raise BiometricError(f"Cần đúng một khuôn mặt; phát hiện {0 if faces is None else len(faces)}")
+                count = 0 if faces is None else len(faces)
+                raise BiometricError(f"Cần đúng một khuôn mặt; phát hiện {count}",
+                                     "multiple_faces" if count > 1 else "no_face")
             aligned = self._face_recognizer.alignCrop(image, faces[0])
             return self._face_recognizer.feature(aligned).reshape(-1)
 

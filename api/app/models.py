@@ -115,7 +115,7 @@ class WebhookDelivery(Base):
     __tablename__ = "webhook_deliveries"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
-    session_id: Mapped[str] = mapped_column(ForeignKey("verify_sessions.id"), index=True)
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("verify_sessions.id"), index=True, nullable=True)
     payload: Mapped[dict] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -133,3 +133,32 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(String(100))
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class IntegrityCheck(Base):
+    __tablename__ = "integrity_checks"
+    __table_args__ = (UniqueConstraint("tenant_id", "request_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id"), index=True)
+    event_id: Mapped[str | None] = mapped_column(ForeignKey("verification_events.id"), nullable=True)
+    session_id: Mapped[str] = mapped_column(String(100), index=True)
+    request_id: Mapped[str] = mapped_column(String(100))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    face_sha256: Mapped[str] = mapped_column(String(64))
+    voice_sha256: Mapped[str] = mapped_column(String(64))
+    integrity_status: Mapped[str] = mapped_column(String(20), default="processing", index=True)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class CheckEvidence(Base):
+    __tablename__ = "check_evidence"
+    __table_args__ = (UniqueConstraint("check_id", "modality"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    check_id: Mapped[str] = mapped_column(ForeignKey("integrity_checks.id"), index=True)
+    modality: Mapped[str] = mapped_column(String(16))
+    object_key: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(String(100))
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
