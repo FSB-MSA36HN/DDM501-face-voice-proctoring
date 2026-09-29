@@ -17,7 +17,7 @@ Business story: annual employee English assessment, API/webhook integrity verifi
 | Deployment | 15% | FastAPI/OpenAPI, Docker/health/readiness, hosted verify/portal/legacy, packaged weights, runner preserves DB/assets, backup/restore và rollback drill | Local PaaS simulation không chứng minh public cloud/TLS/SSO; camera/mic cần browser acceptance |
 | Monitoring | 10% | Grafana tập trung quality/drift/Registry/performance/review/DAG/RAI/resources/logs; protected reports; Prometheus → Alertmanager → Telegram verified | Human accuracy/fairness chờ nhãn thật; không dùng synthetic thay thế |
 | Testing / CI/CD | 15% | Unit/API/media-upload/data/model/SaaS/collector/transport tests; coverage toàn API/monitoring + selected evaluation modules ≥80%; GitHub quality/build/deploy workflow và runner Windows | Chỉ tính remote CI/deploy khi có run thành công đúng source; xem VERIFICATION.md |
-| Responsible AI | 10% | Consent, source-separated labels, immutable prediction/manual appeal, quality slices, Wilson 95% CI; reason codes/margins/sensitivity/counterfactual; RAI trước promotion | Human gate hiện insufficient_data; chưa demographic fairness/PAD/audio anti-spoof |
+| Responsible AI | 10% | Consent, source-separated labels, immutable prediction/manual appeal, quality slices, Wilson 95% CI; reason codes/margins/sensitivity/counterfactual; RAI trước promotion; research PAD/AASIST inference | Human gate hiện insufficient_data; chưa demographic fairness hoặc customer anti-spoof benchmark |
 | Documentation | 10% | README/badge, API examples, architecture/integration/operations/deployment, hai mappings, capacity/cost, 12-slide PowerPoint có notes | Nhóm rà soát và điền tên/contribution thật |
 
 ### Đối chiếu các tiêu chí con trong development rubric

@@ -5,7 +5,7 @@
 Primary portal reports model signals, not exam verdicts. Missing detector produces inconclusive, not an all-clear. MiniFASNet single-image PAD and AASIST LA inference are implemented; no customer anti-spoof benchmark or universal deepfake/replay accuracy is claimed. ECAPA segment change is heuristic, not overlap diarization. Exact media reuse may have legitimate retry/capture causes; idempotent retries do not create reuse alerts. Raw ordinary checks are discarded; suspicious media needs consent and restricted operator access. Historical statements that anti-spoof is entirely absent now refer to the pre-maintenance baseline.
 
 
-This is decision support. A mismatch becomes `REVIEW`, never an automatic accusation. Quality is not liveness, face PAD or voice anti-spoofing.
+This is decision support. In the batch contract a mismatch becomes `suspicious`; missing information becomes `inconclusive`. Neither is an accusation or an exam decision. The compatibility identity/session contract uses `review`. Capture quality and identity similarity are separate from face PAD and voice anti-spoofing.
 
 ## Fairness
 
@@ -26,7 +26,7 @@ SaaS sessions record explicit consent time before verification. Tenant queries a
 Synthetic simulation labels are identified separately in the quality-slice report. FAR uses impostor count as denominator, FRR uses genuine count; missing classes produce null rates. The human fairness gate returns `insufficient_data` until enough actual human-labelled slices exist. Do not rename simulation feedback as human review to make this gate pass.
 
 - Biometric embeddings and media are sensitive personal data; obtain explicit consent and publish purpose/retention rules.
-- Raw storage is disabled by default. Production requires TLS, KMS-backed encryption, secret management, SSO/RBAC, audit access and deletion/export workflows.
+- Raw enrollment and ordinary check storage are disabled by default. Suspicious batch checks retain image/audio evidence in MinIO with consent and tenant-scoped operator access. Demo subscriptions retain history; deactivation blocks access without deleting records. Production requires TLS, KMS-backed encryption, secret management, SSO/RBAC, audit access and deletion/export workflows.
 - Do not reuse data for surveillance or unrelated identification. This system supports 1:1 declared identity only.
 - Limit retention for raw samples, templates and events separately; document lawful basis and incident response.
 - Known risks include demographic performance gaps, disability/accent effects, replay/deepfake attacks, coercion and over-reliance by proctors.

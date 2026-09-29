@@ -52,7 +52,7 @@ def connection():
 def api(method, path, **kwargs):
     cfg = config()
     response = requests.request(method, os.getenv("API_URL", "http://api:8000") + path,
-                                headers={"X-API-Key": cfg["integration_key"]}, timeout=30, **kwargs)
+                                headers={"X-API-Key": cfg["integration_key"]}, timeout=180, **kwargs)
     if not response.ok:
         raise HTTPException(response.status_code, "Verification service rejected request")
     return response.json()
