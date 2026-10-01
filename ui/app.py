@@ -68,6 +68,10 @@ if not key:
 
 try:
     identity = api('GET', '/v1/me')
+    if st.session_state.get('enrollment_link_tenant') != identity['tenant_id']:
+        st.session_state.pop('enrollment_link', None)
+        st.session_state.pop('enrollment_name', None)
+        st.session_state['enrollment_link_tenant'] = identity['tenant_id']
     platform = identity['role'] == 'platform'
     operator = identity['role'] in {'operator', 'platform'}
     pages = ['Công ty & đăng ký', 'Vận hành MLOps'] if platform else ['Tổng quan', 'Nhân viên', 'Kiểm tra tích hợp', 'Lịch sử & báo cáo']
