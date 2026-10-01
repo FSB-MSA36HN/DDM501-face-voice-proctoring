@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,7 +18,11 @@ from pipeline.monitoring_job import (
     report_artifact,
     training_run_id,
 )
-from pipeline.promotion_gate import compare_paired_holdout, compare_reviewed_shadow
+from pipeline.promotion_gate import (
+    compare_paired_holdout,
+    compare_reviewed_shadow,
+    promote,
+)
 
 
 def test_identity_split_is_deterministic_and_holdout_never_enters_training():
@@ -194,3 +199,59 @@ def test_reviewed_shadow_requires_random_audits_and_blocks_regression():
     worse = {'face_threshold': .3, 'voice_threshold': .3}
     assert compare_reviewed_shadow(rows, incumbent, worse)['status'] == 'regression'
     assert compare_reviewed_shadow(rows[:4], incumbent, worse)['status'] == 'insufficient_data'
+
+
+def test_registry_promotion_requires_actual_gain_and_reviewed_shadow(monkeypatch):
+    from pipeline import data_snapshot, promotion_gate
+
+    class Registry:
+        def __init__(self):
+            self.alias_updates = []
+            self.tags = []
+            self.candidate = SimpleNamespace(version='11', run_id='new')
+            self.champion = SimpleNamespace(version='10', run_id='old')
+            metrics = {f'{modality}_{metric}': 0.05 for modality in ('face', 'voice')
+                       for metric in ('far', 'frr', 'cv_far', 'cv_frr', 'holdout_far', 'holdout_frr')}
+            metrics.update({f'{modality}_{metric}': 10 for modality in ('face', 'voice')
+                            for metric in ('positive_pairs', 'negative_pairs',
+                                           'holdout_positive_pairs', 'holdout_negative_pairs')})
+            self.runs = {'new': SimpleNamespace(data=SimpleNamespace(metrics=metrics,
+                         params={'face_threshold': '.5', 'voice_threshold': '.5'})),
+                         'old': SimpleNamespace(data=SimpleNamespace(metrics=metrics,
+                         params={'face_threshold': '.3', 'voice_threshold': '.3'}))}
+
+        def get_run(self, run_id):
+            return self.runs[run_id]
+
+        def get_model_version_by_alias(self, name, alias):
+            assert alias == 'champion'
+            return self.champion
+
+        def set_model_version_tag(self, name, version, key, value):
+            self.tags.append((key, value))
+
+        def set_registered_model_alias(self, name, alias, version):
+            self.alias_updates.append((alias, version))
+
+    scores = {'face': ([.8] * 10, [.4] * 10), 'voice': ([.8] * 10, [.4] * 10)}
+    rows = [{'face_score': .8 if truth else .4, 'voice_score': .8 if truth else .4,
+             'is_genuine': truth, 'selection_reason': 'random_audit'}
+            for truth in (True, False) for _ in range(6)]
+    monkeypatch.setenv('SNAPSHOT_PATH', 'locked.json')
+    monkeypatch.setenv('REQUIRE_REVIEWED_SHADOW', 'true')
+    monkeypatch.setenv('DATABASE_URL', 'test://')
+    monkeypatch.setattr(data_snapshot, 'read_snapshot', lambda _: {'tenant_scope': 'demo', 'samples': []})
+    monkeypatch.setattr(promotion_gate, 'paired_scores_from_snapshot', lambda _: scores)
+    monkeypatch.setattr(promotion_gate, 'load_reviewed_shadow', lambda *_: rows)
+    client = Registry()
+    result = promote(client, 'bundle', client.candidate)
+    assert result['paired_holdout']['promote'] is True
+    assert result['reviewed_shadow']['status'] == 'pass'
+    assert client.alias_updates == [('champion', '11')]
+    assert ('rollback_version', '10') in client.tags
+
+    client = Registry()
+    client.runs['old'].data.params.update(face_threshold='.5', voice_threshold='.5')
+    result = promote(client, 'bundle', client.candidate)
+    assert 'no_measured_gain' in result['failures']
+    assert client.alias_updates == []
