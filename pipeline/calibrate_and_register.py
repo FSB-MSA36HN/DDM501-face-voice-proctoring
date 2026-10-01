@@ -176,6 +176,7 @@ def main() -> None:
             break
         time.sleep(1)
     client.set_registered_model_alias(model_name, "candidate", version.version)
+    client.set_registered_model_alias(model_name, "challenger", version.version)
     if args.promote:
         if __package__:
             from .promotion_gate import promote

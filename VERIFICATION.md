@@ -1,5 +1,16 @@
 # Kiểm chứng MLOps và company service (Asia/Saigon)
 
+## Continuous MLOps local 02/10/2026
+
+- Checkpoint trước thay đổi: branch `checkpoint/2026-10-02-before-mlops-continuous`, commit `4913b7b`; dump PostgreSQL `data/backups/ddm501_restore_drill_20261001_184709.dump` đã được restore thử vào database tạm. Runtime MinIO/DB phát sinh sau checkpoint cần sao lưu riêng nếu rollback.
+- `biometric_monitoring_pipeline` run `continuous_monitor_20261002_a` và `continuous_monitor_20261002_b` thành công. Training DAG run `continuous_training_20261002_a` thành công **7/7 task**. MinIO có training manifest cho 282 embedding, SHA-256 snapshot đối chiếu đúng; monitoring đã ghi input không nhãn, nhãn review tách riêng và report theo cửa sổ.
+- Sau đợt rà soát retry/provenance, monitoring run `continuous_monitor_20261002_c` cũng thành công: collect/branch/no-op success, task trigger được skip vì chưa đủ mẫu. Training snapshot cũ được publish lại với timestamp khác mà SHA-256 bất biến vẫn khớp. API/monitoring được build lại từ source mới.
+- Training run `continuous_training_20261002_b` trên dataset không đổi thành công **7/7 task**; publish dataset lặp không lỗi. MLflow vẫn giữ `champion=10`, candidate/challenger mới `12`; task rollout ghi `status=skipped`, `challenger_was_not_promoted` thay vì reload champion cũ. Bộ kiểm chứng hiện tại: **100 pytest pass**, Ruff/compile/Compose config/DAG import/diff check pass, `verify_monitoring_centre.py` pass.
+- MLflow `champion=10`, `candidate=12`, `challenger=12`; API `/ready` phục vụ version 10. Version 11 và 12 không vượt paired holdout (`no_measured_gain`) và chưa đủ random audit human, vì vậy không được promote. Monitoring hiện báo `insufficient_data`: mỗi tenant/model mới chỉ có vài check, không có human label; không coi đây là drift hoặc accuracy tốt/xấu.
+- `verify_employee_demo.py` chạy lại qua hai công ty, mỗi người ghi danh một lần với 2 ảnh + 2 WAV, check `verified`, cross-tenant bị chặn. Đây là media bootstrap để thử luồng, không phải ground truth human. API review queue lấy cohort 10% độc lập với trạng thái dự đoán và chặn khai khống `random_audit`.
+- `verify_monitoring_centre.py` pass: mọi truy vấn dashboard, collector/freshness và protected reports. Prometheus scrape trạng thái monitoring DAG, retrain recommendation theo tenant/model; ba alert drift/retrain/staleness được nạp và hiện inactive. Phiên này không gửi alert Telegram thử để tránh thông báo dư.
+- Giới hạn triển khai: chưa có nhãn human đủ để tự đánh giá FAR/FRR production hoặc đổi champion; chưa có canary phân tuyến request thực. Code/image CI/CD vẫn qua GitHub Actions, còn lần deploy local này được build bằng Docker Compose; runner Windows đã có giới hạn Code Integrity ghi ở phần 01/10.
+
 ## Demo nhân viên đa công ty 01/10/2026
 
 - Commit `8dc4863` đã được push lên `main`; local Compose đã deploy đúng source commit này và health API, portal, trang thi, Grafana đều trả HTTP 200.

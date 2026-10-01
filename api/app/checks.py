@@ -3,11 +3,13 @@ import hashlib
 import io
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from prometheus_client import Counter
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,8 +20,10 @@ from .auth import Principal, audit, authenticate, get_person, operator
 from .db import get_db
 from .models import (
     CheckEvidence,
+    CheckReview,
     IntegrityCheck,
     Tenant,
+    VerificationFeedback,
     WebhookDelivery,
 )
 from .storage import sha256
@@ -46,6 +50,89 @@ def scoped_check(db, check_id, principal):
     if row is None:
         raise HTTPException(404, 'Check not found')
     return row
+
+
+class ReviewInput(BaseModel):
+    identity_truth: Literal['genuine', 'impostor', 'unknown']
+    cheating_judgement: Literal['confirmed', 'dismissed', 'undetermined']
+    selection_reason: Literal['suspicious', 'random_audit', 'near_threshold', 'manual']
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+def review_output(row):
+    return {'check_id': row.check_id, 'identity_truth': row.identity_truth,
+            'cheating_judgement': row.cheating_judgement,
+            'selection_reason': row.selection_reason, 'notes': row.notes,
+            'reviewer': row.reviewer, 'source': 'human',
+            'created_at': row.created_at.isoformat(), 'updated_at': row.updated_at.isoformat()}
+
+
+def selected_for_random_audit(check_id: str) -> bool:
+    """Stable 10% cohort, selected without consulting the model's decision."""
+    return int(hashlib.sha256(check_id.encode()).hexdigest()[:8], 16) % 10 == 0
+
+
+@router.get('/v1/reviews/queue')
+def review_queue(db: Session = Depends(get_db), principal: Principal = Depends(operator)):
+    """Include every concern and the same model-independent audit cohort."""
+    recent = list(db.scalars(select(IntegrityCheck).where(IntegrityCheck.tenant_id == principal.tenant_id)
+                             .order_by(IntegrityCheck.created_at.desc(), IntegrityCheck.id.desc()).limit(200)))
+    reviewed = set(db.scalars(select(CheckReview.check_id).where(CheckReview.tenant_id == principal.tenant_id)))
+    pending = [check for check in recent if check.id not in reviewed]
+    items = []
+    for check in pending:
+        reason = ('random_audit' if selected_for_random_audit(check.id) else
+                  'suspicious' if check.integrity_status == 'suspicious' else
+                  'manual' if check.integrity_status == 'inconclusive' else
+                  None)
+        if reason:
+            result = check.result or {}
+            items.append({'check_id': check.id, 'employee_code': result.get('employee_code'),
+                          'employee_name': result.get('employee_name'), 'checked_at': result.get('checked_at'),
+                          'integrity_status': check.integrity_status, 'selection_reason': reason})
+    return {'items': items, 'audit_policy': 'stable 10% hash cohort across all check outcomes'}
+
+
+@router.get('/v1/checks/{check_id}/review')
+def get_review(check_id: str, db: Session = Depends(get_db), principal: Principal = Depends(operator)):
+    scoped_check(db, check_id, principal)
+    row = db.get(CheckReview, check_id)
+    return {'check_id': check_id, 'status': 'pending'} if row is None else review_output(row)
+
+
+@router.put('/v1/checks/{check_id}/review')
+def put_review(check_id: str, body: ReviewInput, db: Session = Depends(get_db),
+               principal: Principal = Depends(operator)):
+    check = scoped_check(db, check_id, principal)
+    sampled = selected_for_random_audit(check_id)
+    if body.selection_reason == 'random_audit' and not sampled:
+        raise HTTPException(422, 'Check was not selected for random audit')
+    row = db.get(CheckReview, check_id)
+    if row is None:
+        row = CheckReview(check_id=check_id, tenant_id=principal.tenant_id)
+        db.add(row)
+    row.identity_truth = body.identity_truth
+    row.cheating_judgement = body.cheating_judgement
+    row.selection_reason = 'random_audit' if sampled else body.selection_reason
+    row.notes = body.notes
+    row.reviewer = 'operator:' + principal.key_id
+    row.updated_at = datetime.now(timezone.utc)
+    feedback = db.scalar(select(VerificationFeedback).where(VerificationFeedback.event_id == check.event_id))
+    if body.identity_truth == 'unknown':
+        if feedback is not None:
+            db.delete(feedback)
+    elif feedback is None:
+        db.add(VerificationFeedback(event_id=check.event_id, is_genuine=body.identity_truth == 'genuine',
+                                    reviewer=row.reviewer, notes=body.notes))
+    else:
+        feedback.is_genuine = body.identity_truth == 'genuine'
+        feedback.reviewer = row.reviewer
+        feedback.notes = body.notes
+    audit(db, principal, 'integrity.reviewed', check_id,
+          details=f'{body.identity_truth}/{body.cheating_judgement}/{row.selection_reason}')
+    db.commit()
+    db.refresh(row)
+    return review_output(row)
 
 
 def check_query(principal, person_id=None, session_id=None, start=None, end=None):

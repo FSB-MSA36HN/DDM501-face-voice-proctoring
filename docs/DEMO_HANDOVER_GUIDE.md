@@ -1,6 +1,6 @@
 # Hướng dẫn demo và bàn giao toàn hệ thống DDM501 Face & Voice Integrity
 
-> Dành cho đội tiếp quản, người trình bày và người vận hành. Tài liệu mô tả **bản MVP local chạy bằng Docker Compose**, đối chiếu với giao diện và mã nguồn ngày 01/10/2026. Dùng để kể câu chuyện, dẫn demo và giải nghĩa số liệu. Các giá trị trên dashboard thay đổi theo dữ liệu và khoảng thời gian chọn; không đọc các số trong tài liệu cũ như số đo hiện tại.
+> Dành cho đội tiếp quản, người trình bày và người vận hành. Tài liệu mô tả **bản MVP local chạy bằng Docker Compose**, đối chiếu với giao diện và mã nguồn ngày 02/10/2026. Dùng để kể câu chuyện, dẫn demo và giải nghĩa số liệu. Các giá trị trên dashboard thay đổi theo dữ liệu và khoảng thời gian chọn; không đọc các số trong tài liệu cũ như số đo hiện tại. Luồng monitoring/challenger mới được giải thích kỹ trong `docs/CONTINUOUS_MLOPS.md`.
 
 ## 1. Câu chuyện cần kể trong hai phút
 
@@ -74,7 +74,7 @@ flowchart LR
 | 12–17 | Trang thi – bước 3 | Gửi ảnh/WAV cùng danh tính; chỉ mở JSON khi cần | API trả kết quả từng batch ngay; cadence do bên thi chọn. |
 | 17–22 | Portal – Lịch sử & báo cáo | Chỉ check `verified`, rồi check `suspicious` có bằng chứng; xuất CSV/PDF | Công ty xem lại theo nhân viên/phiên/ngày, không có điểm thi. |
 | 22–25 | Portal – API & Webhook và công ty B | Xem trạng thái delivery; chuyển key công ty B, đối chiếu dữ liệu khác | Webhook là thông báo nghiệp vụ; tenant isolation là điều kiện bắt buộc. |
-| 25–31 | Airflow `:18081` + MLflow `:15030` | Mở run `employee_demo_20261001`, sáu task và alias champion | Vòng model bên ngoài có gate, lineage và cập nhật serving. |
+| 25–31 | Airflow `:18081` + MLflow `:15030` | Mở monitoring DAG, model DAG bảy task, alias champion/challenger | Vòng model bên ngoài có drift evidence, gate, lineage và cập nhật serving. |
 | 31–39 | Grafana `:13000` | Đi qua bảy hàng từ sức khỏe → data → drift → Registry → webhook → DAG → hạ tầng | Monitoring chung quan sát cả model lẫn nền tảng, có nguồn số liệu rõ ràng. |
 | 39–42 | Evidently, Alerts, Telegram, Logs | Mở báo cáo drift/human/synthetic, cảnh báo và log | Alert kỹ thuật đến đội vận hành; không thay cho per-check webhook. |
 | 42–45 | GitHub Actions và giới hạn | Nêu quality/build đã qua, deploy runner Windows hiện bị policy chặn | Bàn giao trạng thái thật, phạm vi MVP và việc cần làm tiếp. |
@@ -142,18 +142,21 @@ Trong API docs, chỉ ra `POST /v1/checks` nhận `person_id`, `session_id`, `re
 
 Mở DAG **`biometric_model_pipeline`**, chọn run mới nhất; run `employee_demo_20261001` là mốc kiểm chứng đã ghi trong `VERIFICATION.md`. **Graph** cho thứ tự, **Grid** cho trạng thái từng run, **Task Instance/Logs** cho lỗi và đầu ra. DAG chạy theo lịch `0 2 * * 0` (02:00 Chủ nhật theo timezone Airflow), có thể trigger thủ công; `max_active_runs=1`. Không nhầm một lần run DAG với một phiên thi.
 
+Mở thêm **`biometric_monitoring_pipeline`**: mỗi giờ chốt window theo tenant/model version, giữ reference, tách input không nhãn khỏi nhãn review, tính PSI và đề nghị train khi đủ điều kiện. Task `decide_retraining` chọn trigger training hoặc `no_training_needed`. `insufficient_data` khi mới có vài batch là kết quả đúng, không phải DAG lỗi.
+
 | Task | Đầu vào → đầu ra | Trình bày gì khi mở task |
 |---|---|
 | `ingest_versioned_snapshot` | Mẫu/embedding thuộc training scope mặc định `demo` → snapshot có fingerprint SHA-256 | Dữ liệu học/đánh giá được cố định cho cả run, không lẫn dữ liệu mới chen giữa các task. Dữ liệu check của công ty A/B dùng cho báo cáo/monitoring; **không mặc nhiên** là dữ liệu train của run này. |
 | `validate_data_quality` | Snapshot → số người/mẫu, kích thước embedding, lỗi dữ liệu, pass/fail | Không chạy tiếp trên mẫu lỗi, vector rỗng/không đồng nhất hoặc dữ liệu không đủ. Xem report `data-quality`. |
+| `publish_versioned_dataset` | Snapshot và split identity → MinIO manifest/feature có SHA-256 | Dữ liệu dùng để hiệu chỉnh được khóa theo phiên bản; đây là embedding của training tenant, không gom media khách hàng. |
 | `feature_engineer_train_register_candidate` | Dữ liệu hợp lệ → cặp genuine/impostor, hiệu chỉnh threshold, bốn fold CV nội bộ + holdout identity riêng → candidate/metrics/artifacts trong MLflow | “Train” ở MVP là **hiệu chỉnh policy/ngưỡng** trên embedding của encoder pretrained, không fine-tune toàn bộ YuNet/SFace/ECAPA. |
 | `generate_responsible_ai_audit` | Metrics/slices → báo cáo RAI và giới hạn | Quality slice là proxy; thiếu nhãn human/demographic thì không tuyên bố fairness đạt. |
-| `evaluate_and_promote_candidate` | Candidate + dataset fingerprint + calibration/CV/holdout FAR/FRR + số cặp → gate → alias champion hoặc fail | Ngưỡng gate demo mặc định FAR/FRR ≤20% ở các phần cần thiết, tối thiểu 5 cặp positive/negative; candidate fail thì giữ champion trước. |
-| `reload_current_champion` | Champion MLflow → API serving nạp policy mới | So `model_version` ở API `/health`/Grafana với champion; task chỉ chạy khi các bước trước thành công. |
+| `evaluate_and_promote_candidate` | Candidate + dataset fingerprint + calibration/CV/holdout + so cùng holdout với champion + reviewed shadow → gate | FAR/FRR ≤20%, đủ cặp, có cải thiện và không hồi quy. Thiếu nhãn review hoặc không cải thiện thì giữ champion cũ; xem tag và paired metrics. |
+| `reload_current_champion` | Champion MLflow → API serving và 30 giây quan sát readiness | So `model_version` ở API `/ready` với alias; nếu nạp thất bại, phục hồi `rollback_version`. |
 
 ### 6.2 MLflow — `http://localhost:15030`
 
-Mở **Registered Models → `face-voice-risk-bundle`**. `candidate` là bản vừa thử; alias `champion` là bản API dùng. Trong run của model xem **Parameters** (`dataset_version`, ngưỡng face/voice, phương pháp split/selection), **Metrics** (FAR/FRR, CV, holdout, số cặp), **Artifacts** (`data/snapshot.json`, `data/validation.json`, evaluation, RAI, thresholds/bundle). `dataset_version` là fingerprint của snapshot; cùng giá trị từ ingest đến promotion bảo đảm lineage. Phiên bản số tăng không mặc nhiên nghĩa chất lượng cao hơn: phải xem gate, dữ liệu và giới hạn. MinIO giữ MLflow artifacts nhưng Registry metadata/alias ở PostgreSQL của MLflow.
+Mở **Registered Models → `face-voice-risk-bundle`**. `candidate`/`challenger` là bản vừa thử; alias `champion` là bản API dùng. Trong run của model xem **Parameters** (`dataset_version`, ngưỡng face/voice, phương pháp split/selection), **Metrics** (FAR/FRR, CV, holdout, số cặp), **Artifacts** (`data/snapshot.json`, `data/validation.json`, evaluation, RAI, thresholds/bundle). `dataset_version` là fingerprint của snapshot; cùng giá trị từ ingest đến promotion bảo đảm lineage. Phiên bản số tăng không mặc nhiên nghĩa chất lượng cao hơn: phải xem gate, dữ liệu và giới hạn. MinIO giữ MLflow artifacts nhưng Registry metadata/alias ở PostgreSQL của MLflow.
 
 | Thuật ngữ đánh giá | Nghĩa và cách đọc |
 |---|---|
@@ -233,7 +236,7 @@ Mở **Registered Models → `face-voice-risk-bundle`**. `candidate` là bản v
 |---|---|
 | **Latest Airflow DAG state** | Trạng thái run model gần nhất; mở Airflow khi failed. |
 | **Latest run / collector ages** | Số giây từ run/cycle thu thập gần nhất; tuổi lớn gợi ý scheduler/collector stale. |
-| **Latest DAG tasks — success / duration** | Task nào thành công và thời gian xử lý; đối chiếu đúng sáu task ở mục 6.1. |
+| **Latest DAG tasks — success / duration** | Task model nào thành công và thời gian xử lý; đối chiếu bảy task ở mục 6.1. Monitoring DAG mở riêng trong Airflow. |
 | **Collectors — database / registry / Airflow** | Mỗi nguồn thu thập có thành công hay không; nếu collector fail thì panel phụ thuộc có thể stale. |
 | **Human quality fairness status / Fairness quality slices** | So sánh chất lượng theo lát cắt và số mẫu/CI khi có nhãn; `insufficient_data` **không phải** fairness pass. Không suy demographic fairness từ proxy chất lượng. |
 

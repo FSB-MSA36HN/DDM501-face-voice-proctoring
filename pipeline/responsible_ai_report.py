@@ -15,7 +15,8 @@ SELECT
     WHEN LEAST(COALESCE(e.face_quality, 0), COALESCE(e.voice_quality, 0)) < 0.7 THEN 'medium'
     ELSE 'high'
   END AS quality_slice,
-  CASE WHEN f.reviewer = 'synthetic-simulation' THEN 'synthetic' ELSE 'human' END AS label_source,
+  CASE WHEN f.reviewer = 'synthetic-simulation' THEN 'synthetic'
+       WHEN f.reviewer LIKE 'operator:%' THEN 'human' ELSE 'untrusted' END AS label_source,
   COUNT(*) AS reviewed,
   SUM(CASE WHEN f.is_genuine THEN 1 ELSE 0 END) AS genuine_count,
   SUM(CASE WHEN NOT f.is_genuine THEN 1 ELSE 0 END) AS impostor_count,

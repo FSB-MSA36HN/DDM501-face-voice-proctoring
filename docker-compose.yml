@@ -177,6 +177,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__PARALLELISM: ${AIRFLOW_PARALLELISM:-1}
+      PYTHONPATH: /opt/project
       AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "2"
       AIRFLOW__SCHEDULER__PARSING_PROCESSES: "1"
       AIRFLOW__WEBSERVER__WORKERS: ${AIRFLOW_WEBSERVER_WORKERS:-1}
@@ -185,6 +186,9 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ddm501-demo-secret-key
       API_URL: http://api:8000
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      MINIO_ENDPOINT: http://minio:9000
+      TRAINING_TENANT_ID: ${TRAINING_TENANT_ID:-demo}
+      CONTINUOUS_TRAINING_ENABLED: ${CONTINUOUS_TRAINING_ENABLED:-true}
     volumes: &airflow-volumes
       - ./airflow/dags:/opt/airflow/dags:ro
       - ${AIRFLOW_LOGS_PATH:-./airflow/logs}:/opt/airflow/logs
@@ -330,7 +334,10 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TRAINING_TENANT_ID: ${TRAINING_TENANT_ID:-demo}
       REPORT_DIR: /reports
-    volumes: ["${REPORTS_PATH:-./reports}:/reports"]
+      MONITORING_SUMMARY_PATH: /data/monitoring/latest.json
+    volumes:
+      - "${REPORTS_PATH:-./reports}:/reports"
+      - "${DATA_PATH:-./data}:/data:ro"
     depends_on:
       postgres: {condition: service_healthy}
     ports: ["127.0.0.1:18003:8003"]

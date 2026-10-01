@@ -27,6 +27,10 @@ with DAG(
         task_id="validate_data_quality",
         bash_command="python /opt/project/pipeline/validate_data.py",
     )
+    publish_dataset = BashOperator(
+        task_id="publish_versioned_dataset",
+        bash_command="cd /opt/project && python -m pipeline.dataset_ledger",
+    )
     train = BashOperator(
         task_id="feature_engineer_train_register_candidate",
         bash_command="python /opt/project/pipeline/calibrate_and_register.py",
@@ -41,6 +45,6 @@ with DAG(
     )
     reload_champion = BashOperator(
         task_id="reload_current_champion",
-        bash_command="python -c \"import os,requests; r=requests.post(os.environ['API_URL']+'/v1/admin/reload-model',headers={'X-API-Key':os.environ['API_KEY']},timeout=60); r.raise_for_status(); print(r.json())\"",
+        bash_command="cd /opt/project && python -m pipeline.model_rollout",
     )
-    ingest >> validate >> train >> responsible_ai_audit >> evaluate >> reload_champion
+    ingest >> validate >> publish_dataset >> train >> responsible_ai_audit >> evaluate >> reload_champion
