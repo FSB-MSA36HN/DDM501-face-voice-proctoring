@@ -22,16 +22,23 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def authenticate(x_api_key: str | None = Header(default=None), db: Session = Depends(get_db)) -> Principal:
+def authenticate(x_api_key: str | None = Header(default=None), db: Session = Depends(get_db),
+                 x_tenant_id: str | None = Header(default=None)) -> Principal:
     if not x_api_key:
         raise HTTPException(401, "API key required")
     if hmac.compare_digest(x_api_key, get_settings().api_key):
-        return Principal("demo", "platform")
+        if x_tenant_id:
+            tenant = db.get(Tenant, x_tenant_id)
+            if tenant is None or not tenant.active:
+                raise HTTPException(404, "Active company not found")
+        return Principal(x_tenant_id or "demo", "platform")
     key = db.scalar(select(TenantKey).join(Tenant).where(
         TenantKey.digest == digest(x_api_key), TenantKey.active.is_(True), Tenant.active.is_(True),
     ))
     if key is None:
         raise HTTPException(401, "Invalid or revoked API key")
+    if x_tenant_id and x_tenant_id != key.tenant_id:
+        raise HTTPException(403, "Cannot access another company")
     return Principal(key.tenant_id, key.role, key.id)
 
 

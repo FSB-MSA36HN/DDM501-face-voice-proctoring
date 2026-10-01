@@ -36,13 +36,22 @@ async def check_batch(request: Request, company_id: str = Form(...), person_id: 
                                         'request_id': request_id, 'consent': str(consent).lower()}, files=files)
 
 
+def service_key():
+    return os.getenv('EXAM_SERVICE_API_KEY') or os.getenv('API_KEY')
+
+
 def config():
+    if key := service_key():
+        return {'integration_key': key}
     if not CONFIG.exists():
         raise HTTPException(503, "Run pipeline/provision_local_saas.py first")
     return json.loads(CONFIG.read_text())
 
 
 def customers():
+    if service_key():
+        return [{'tenant_id': row['id'], 'name': row['name'], **config()}
+                for row in api('GET', '/v1/exam/companies')]
     primary = dict(config(), name='Demo nội bộ')
     extra_file = CONFIG.parent / 'company-demo.json'
     extra = json.loads(extra_file.read_text()).get('companies', []) if extra_file.exists() else []
@@ -53,6 +62,8 @@ def customer_config(company_id):
     customer = next((item for item in customers() if item['tenant_id'] == company_id), None)
     if customer is None:
         raise HTTPException(404, 'Company is unavailable in this demo')
+    if service_key():
+        customer['webhook_secret'] = api('GET', '/v1/company', customer=customer)['webhook_secret']
     return customer
 
 
@@ -106,8 +117,11 @@ def connection():
 
 def api(method, path, customer=None, **kwargs):
     cfg = customer or config()
+    headers = {"X-API-Key": cfg["integration_key"]}
+    if service_key() and customer:
+        headers['X-Tenant-ID'] = customer['tenant_id']
     response = requests.request(method, os.getenv("API_URL", "http://api:8000") + path,
-                                headers={"X-API-Key": cfg["integration_key"]}, timeout=180, **kwargs)
+                                headers=headers, timeout=180, **kwargs)
     if not response.ok:
         raise HTTPException(response.status_code, "Verification service rejected request")
     return response.json()
@@ -126,7 +140,7 @@ def browser_id(request: Request) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "configured": CONFIG.exists()}
+    return {"status": "ok", "configured": bool(service_key()) or CONFIG.exists()}
 
 
 @app.get("/", include_in_schema=False)
@@ -137,7 +151,7 @@ def index(request: Request):
         return response
     except HTTPException:
         pass
-    if CONFIG.exists():
+    if service_key() or CONFIG.exists():
         token = secrets.token_urlsafe(24)
         signed = hmac.new(config()["integration_key"].encode(), token.encode(), hashlib.sha256).hexdigest()
         response.set_cookie("exam_browser", token + "." + signed, httponly=True, samesite="lax", max_age=3600)

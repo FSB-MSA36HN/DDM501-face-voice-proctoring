@@ -1,6 +1,7 @@
 """Company portal. Technical monitoring is reserved for platform administrators."""
 import base64
 import os
+import time as clock
 import uuid
 from datetime import datetime, time, timezone
 
@@ -12,19 +13,43 @@ API_URL = os.getenv('API_URL', 'http://localhost:18100').rstrip('/')
 st.set_page_config(page_title='Face & Voice Integrity', layout='wide')
 st.title('Face & Voice Integrity')
 st.caption('Xác minh danh tính cho kỳ đánh giá ngoại ngữ của doanh nghiệp')
-key = st.sidebar.text_input('API key quản trị công ty / nền tảng', type='password')
-headers = {'X-API-Key': key}
 COLUMNS = {'employee_code': 'Mã nhân viên', 'employee_name': 'Họ tên', 'session_id': 'Phiên công ty',
            'check_id': 'Mã lượt kiểm tra', 'checked_at': 'Thời điểm kiểm tra', 'status_label': 'Kết quả',
            'reason_labels': 'Dấu hiệu', 'evidence_status': 'Bằng chứng', 'checks': 'Số lượt',
            'suspicious': 'Lượt nghi vấn', 'first_check_at': 'Bắt đầu nhận check', 'last_check_at': 'Lần check cuối'}
 
 
-def api(method, path, raw=False, **kwargs):
+def logout():
+    for state_key in list(st.session_state):
+        del st.session_state[state_key]
+    st.query_params.clear()
+    st.query_params['page'] = 'login'
+
+
+def api(method, path, raw=False, api_key=None, **kwargs):
+    headers = {'X-API-Key': api_key if api_key is not None else st.session_state.get('auth_key', '')}
     r = requests.request(method, API_URL+path, headers=headers, timeout=180, **kwargs)
+    if r.status_code == 401 and api_key is None and st.session_state.get('auth_key'):
+        logout()
+        st.rerun()
     if not r.ok:
         raise RuntimeError(f"{r.status_code}: {r.json().get('detail', 'Dịch vụ tạm thời chưa sẵn sàng')}")
     return r.content if raw else r.json()
+
+
+def login():
+    key = st.session_state.pop('login_key', '').strip()
+    try:
+        identity = api('GET', '/v1/me', api_key=key)
+        if identity['role'] not in {'operator', 'platform'}:
+            raise RuntimeError('Hãy dùng key quản trị công ty hoặc quản trị hệ thống.')
+    except Exception as exc:
+        st.session_state['login_error'] = str(exc)
+        return
+    logout()
+    st.session_state['auth_key'] = key
+    st.session_state['auth_expires_at'] = clock.time() + 3600
+    st.query_params['page'] = 'portal'
 
 
 def select_person(people):
@@ -50,8 +75,18 @@ def download_link(content, extension):
     st.markdown(f'<a download="integrity-report.{extension}" href="data:{mime};base64,{encoded}">Tải báo cáo {extension.upper()}</a>', unsafe_allow_html=True)
 
 
-if not key:
-    st.info('Nhập key được cấp để mở không gian riêng của công ty.')
+if st.session_state.get('auth_key') and clock.time() >= st.session_state.get('auth_expires_at', 0):
+    logout()
+
+if not st.session_state.get('auth_key'):
+    st.query_params['page'] = 'login'
+    st.subheader('Đăng nhập quản trị')
+    st.info('Nhập key được cấp để mở không gian quản trị công ty hoặc hệ thống.')
+    with st.form('login', clear_on_submit=True):
+        st.text_input('API key quản trị công ty / nền tảng', type='password', key='login_key')
+        st.form_submit_button('Đăng nhập', type='primary', on_click=login)
+    if st.session_state.get('login_error'):
+        st.error(st.session_state['login_error'])
     with st.expander('Đăng ký công ty - gói dùng thử giả lập'):
         with st.form('register'):
             name = st.text_input('Tên công ty')
@@ -60,11 +95,14 @@ if not key:
             try:
                 row = api('POST', '/v1/registrations', json={'name': name})
                 st.success(f"Đã tạo {row['name']}")
-                st.warning('Lưu key quản trị dưới đây. Key chỉ hiển thị một lần; dùng để đăng nhập tại thanh bên.')
+                st.warning('Lưu key quản trị dưới đây. Key chỉ hiển thị một lần; dùng để đăng nhập tại biểu mẫu phía trên.')
                 st.code(row['operator_key'])
             except Exception as exc:
                 st.error(str(exc))
     st.stop()
+
+st.query_params['page'] = 'portal'
+st.sidebar.button('Đăng xuất', on_click=logout)
 
 try:
     identity = api('GET', '/v1/me')

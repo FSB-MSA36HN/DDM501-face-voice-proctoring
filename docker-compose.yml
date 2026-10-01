@@ -148,6 +148,7 @@ services:
     build:
       context: .
       dockerfile: legacy_demo/Dockerfile
+    env_file: ${ENV_FILE:-.env}
     environment:
       API_URL: http://api:8000
       SAAS_CONFIG: /config/local-saas.json

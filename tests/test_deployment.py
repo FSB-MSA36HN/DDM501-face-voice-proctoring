@@ -3,6 +3,28 @@ import pytest
 from pipeline.prepare_deploy_env import prepare
 
 
+def test_exam_and_api_use_same_credential_source(tmp_path):
+    import json
+    import os
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    if not shutil.which('docker'):
+        pytest.skip('Docker Compose is required for configuration validation')
+    env_file = tmp_path / 'service.env'
+    env_file.write_text('API_KEY=file-service-secret\n')
+    environment = dict(os.environ, ENV_FILE=str(env_file), API_KEY='unrelated-shell-secret')
+    result = subprocess.run(['docker', 'compose', 'config', '--format', 'json'],
+                            cwd=Path(__file__).parents[1], env=environment,
+                            capture_output=True, text=True, check=True)
+    services = json.loads(result.stdout)['services']
+    api_environment = services['api']['environment']
+    exam_environment = services['legacy-demo']['environment']
+    assert api_environment['API_KEY'] == 'file-service-secret'
+    assert exam_environment.get('EXAM_SERVICE_API_KEY', exam_environment.get('API_KEY')) == 'file-service-secret'
+
+
 def test_deploy_secrets_and_existing_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv("DEPLOY_POSTGRES_PASSWORD", "long_database_secret_501")
     monkeypatch.setenv("DEPLOY_API_KEY", "long_api_secret_501")

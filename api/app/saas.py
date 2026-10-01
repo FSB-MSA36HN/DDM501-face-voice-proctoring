@@ -94,6 +94,14 @@ def tenants(db: Session = Depends(get_db)):
              "webhook_url": row.webhook_url, "return_url": row.return_url} for row in db.scalars(select(Tenant))]
 
 
+@router.get('/v1/exam/companies')
+def exam_companies(db: Session = Depends(get_db), principal: Principal = Depends(authenticate)):
+    query = select(Tenant).where(Tenant.active.is_(True)).order_by(Tenant.name, Tenant.id)
+    if principal.role != 'platform':
+        query = query.where(Tenant.id == principal.tenant_id)
+    return [{'id': row.id, 'name': row.name} for row in db.scalars(query)]
+
+
 @router.post("/v1/admin/tenants", status_code=201)
 def create_tenant(body: TenantCreate, db: Session = Depends(get_db), principal: Principal = Depends(platform)):
     tenant = Tenant(name=body.name, webhook_url=validate_destination(body.webhook_url),
