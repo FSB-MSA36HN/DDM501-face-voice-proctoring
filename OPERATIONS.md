@@ -55,6 +55,8 @@ Airflow: snapshot → validate → identity evaluation/register → RAI audit �
 
 ## CI/CD GitHub
 
+**Tình trạng 01/10/2026:** job `quality` và `containers` trên GitHub-hosted runner qua, nhưng `deploy-demo` trên máy này chưa thể chạy tự động: Windows Code Integrity chặn `Runner.Worker.dll` vì không đạt Enterprise signing policy (`0x800711C7`). Chuyển runner ra ngoài OneDrive không giải quyết được. Không tắt chính sách này; cần IT cho phép binary runner hoặc dùng runner Windows đã được phê duyệt. Cho đến khi đó, triển khai local bằng `pipeline/prepare_runner_env.py --stage-deployment` và `docker compose up -d --build`, sau đó chạy `pipeline/verify_stack.py`. Xem kết quả trong `VERIFICATION.md`.
+
 Quality chạy Ruff, compile, dashboard consistency, pytest + coverage ≥80% và Compose config. Coverage gồm toàn `app`, toàn `monitoring`, `pipeline.evaluation`, `data_snapshot`, `validate_data`, `promotion_gate`, `responsible_ai_report`; không phải toàn repository. CLI/frontend/Airflow/weights có live verification riêng. Artifact `quality-evidence` giữ JUnit/coverage XML.
 
 Container build dùng GitHub-hosted Ubuntu. Deploy trusted `main` dùng runner Windows `ddm501-local-windows`, labels `self-hosted`, `Windows`, `ddm501-demo`. Environment `demo` giới hạn main. PR không chạy trên runner local. Concurrency bảo đảm một deploy.
@@ -65,7 +67,7 @@ Deploy sử dụng `.venv/Scripts/python.exe` trong runtime đã kiểm chứng,
 
 Các bước PowerShell của job dùng `-ExecutionPolicy Bypass` trong riêng process chạy script workflow; exit code Python/Docker được kiểm tra rõ ràng. Không thay policy ở mức máy/người dùng.
 
-Khởi động lại runner sau reboot từ repo runtime:
+Sau khi binary runner được chính sách máy cho phép, khởi động lại runner sau reboot từ repo runtime:
 
 ```powershell
 $env:DDM501_RUNTIME_ROOT = (Get-Location).Path

@@ -1,5 +1,15 @@
 # Kiểm chứng MLOps và company service (Asia/Saigon)
 
+## Demo nhân viên đa công ty 01/10/2026
+
+- Commit `8dc4863` đã được push lên `main`; local Compose đã deploy đúng source commit này và health API, portal, trang thi, Grafana đều trả HTTP 200.
+- **69/69** pytest pass; Ruff, compile và JavaScript syntax check pass. Lời mời nhân viên ràng buộc tenant/người, hết hạn 24 giờ và dùng một lần. Test bao phủ thiếu consent, thiếu/trùng mẫu, hết hạn, subscription dừng và cách ly tenant.
+- `pipeline/verify_employee_demo.py` đã chạy qua trang thi local với hai công ty: mỗi người tự ghi danh 2 ảnh + 2 WAV trong một request, replay bị từ chối, check qua simulator cho kết quả `verified`, cross-tenant bị chặn. Bằng chứng: `reports/employee-demo-verification.json` (gitignored).
+- `pipeline/verify_company_service.py` có `verified` và `suspicious`, bằng chứng MinIO, cách ly check/evidence, CSV/PDF và webhook có chữ ký đều pass. Bằng chứng: `reports/company-verification.json`.
+- DAG `biometric_model_pipeline` run `employee_demo_20261001` thành công 6/6 tác vụ. `verify_stack.py --dag-run employee_demo_20261001 --inference` pass serving/Registry/Airflow/Prometheus/Evidently/Grafana/alerts/inference. `verify_monitoring_centre.py --send-alert` pass truy vấn dashboard, collector, protected reports và Alertmanager → Telegram.
+- GitHub Actions của commit cuối: jobs `quality` và `containers` pass. `deploy-demo` bị kẹt vì Windows Code Integrity chặn `Runner.Worker.dll` chưa đạt Enterprise signing policy (`0x800711C7`); đã yêu cầu hủy job kẹt. Local deploy đã thực hiện thủ công, không thay đổi policy bảo mật. Runner cần được IT cho phép hoặc thay bằng runner tương thích trước khi CI/CD tự deploy được.
+- Browser camera/microphone chưa được kiểm tra trên thiết bị thật trong phiên này vì không có browser điều khiển khả dụng; HTML/JS đã kiểm tra cú pháp, endpoint và luồng upload chạy qua simulator. Media bootstrap không phải benchmark độ chính xác người thật/deepfake.
+
 ## Maintenance 29/09/2026
 
 | Hạng mục | Bằng chứng mới |
