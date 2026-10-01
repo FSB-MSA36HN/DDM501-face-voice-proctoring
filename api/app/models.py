@@ -46,6 +46,17 @@ class BiometricSample(Base):
     person: Mapped[Person] = relationship(back_populates="samples")
 
 
+class EnrollmentInvitation(Base):
+    __tablename__ = "enrollment_invitations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    person_id: Mapped[str] = mapped_column(ForeignKey("people.id"), index=True)
+    digest: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class VerificationEvent(Base):
     __tablename__ = "verification_events"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

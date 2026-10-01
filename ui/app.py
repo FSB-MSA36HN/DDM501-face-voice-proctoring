@@ -32,12 +32,14 @@ def select_person(people):
 
 
 def media_inputs(enrollment=False):
-    camera = st.camera_input('Chụp ảnh')
+    camera = st.camera_input('Chụp ảnh 1' if enrollment else 'Chụp ảnh')
+    second_camera = st.camera_input('Chụp ảnh 2') if enrollment else None
     faces = st.file_uploader('Hoặc tải ảnh', type=['jpg', 'jpeg', 'png', 'webp'], accept_multiple_files=enrollment)
-    recording = st.audio_input('Thu audio')
+    recording = st.audio_input('Thu audio 1' if enrollment else 'Thu audio')
+    second_recording = st.audio_input('Thu audio 2') if enrollment else None
     voices = st.file_uploader('Hoặc tải WAV', type=['wav'], accept_multiple_files=enrollment)
-    face_items = ([camera] if camera else []) + (faces if enrollment else [faces] if faces else [])
-    voice_items = ([recording] if recording else []) + (voices if enrollment else [voices] if voices else [])
+    face_items = [item for item in (camera, second_camera) if item] + (faces if enrollment else [faces] if faces else [])
+    voice_items = [item for item in (recording, second_recording) if item] + (voices if enrollment else [voices] if voices else [])
     return face_items, voice_items
 
 
@@ -93,7 +95,22 @@ try:
             if st.form_submit_button('Thêm nhân viên', type='primary'):
                 api('POST', '/v1/people', json={'external_id': code, 'display_name': name})
                 st.success('Đã thêm nhân viên.')
-        st.dataframe(pd.DataFrame(api('GET', '/v1/people')), use_container_width=True, hide_index=True)
+        employees = api('GET', '/v1/people')
+        st.dataframe(pd.DataFrame([{'Mã nhân viên': p['external_id'], 'Họ tên': p['display_name'],
+                                   'Ghi danh': 'Đủ mẫu' if p['ready'] else 'Cần ghi danh'} for p in employees]),
+                     use_container_width=True, hide_index=True)
+        if employees:
+            st.subheader('Gửi lời mời ghi danh cho nhân viên')
+            invited = st.selectbox('Chọn nhân viên nhận lời mời', employees,
+                                   format_func=lambda p: f"{p['display_name']} · {p['external_id']}")
+            st.caption('Liên kết chỉ dùng một lần trong 24 giờ. Nhân viên tự gửi hai ảnh và hai WAV; không cần key quản trị.')
+            if st.button('Tạo liên kết ghi danh', type='primary'):
+                invitation = api('POST', f"/v1/people/{invited['id']}/enrollment-invitations")
+                st.session_state['enrollment_link'] = 'http://localhost:18600/#enroll=' + invitation['token']
+                st.session_state['enrollment_name'] = invited['display_name']
+            if st.session_state.get('enrollment_link'):
+                st.success(f"Sao chép liên kết cho {st.session_state['enrollment_name']}. Chỉ hiển thị trong phiên quản trị này.")
+                st.code(st.session_state['enrollment_link'])
 
     elif page in {'Ghi danh face & voice', 'Kiểm tra tích hợp'}:
         enrollment = page == 'Ghi danh face & voice'
@@ -108,7 +125,7 @@ try:
             faces, voices = media_inputs(enrollment)
             consent = st.checkbox('Công ty xác nhận có sự đồng ý của nhân viên để xử lý sinh trắc.')
             if st.button('Ghi danh' if enrollment else 'Gửi check', type='primary', disabled=not consent):
-                if not faces or not voices:
+                if (enrollment and (len(faces) != 2 or len(voices) != 2)) or (not enrollment and (not faces or not voices)):
                     st.error('Cần cả ảnh và WAV.')
                 else:
                     with st.spinner('Đang xử lý…'):
@@ -123,7 +140,10 @@ try:
                                 'voice_file': (voices[0].name, voices[0].getvalue(), 'audio/wav')})
                     if not enrollment:
                         (st.success if result['integrity_status'] == 'verified' else st.warning)(result['status_label'])
-                    st.json(result)
+                    else:
+                        (st.success if result['ready'] else st.warning)('Đã ghi danh đủ mẫu.' if result['ready'] else 'Cần bổ sung mẫu ghi danh.')
+                    with st.expander('Xem dữ liệu kỹ thuật (JSON)'):
+                        st.json(result)
 
     elif page == 'Lịch sử & báo cáo':
         people = api('GET', '/v1/people')
@@ -147,12 +167,14 @@ try:
             rows = report['checks']
         else:
             rows = api('GET', '/v1/checks', params=params)['items']
-        fields = ['check_id', 'employee_code', 'employee_name', 'session_id', 'checked_at', 'status_label', 'reason_labels', 'evidence_status']
+        fields = ['employee_code', 'employee_name', 'session_id', 'checked_at', 'status_label', 'reason_labels', 'evidence_status']
         st.dataframe(pd.DataFrame([{k: r[k] for k in fields} for r in rows]), use_container_width=True, hide_index=True, column_config=COLUMNS)
         if rows:
             r = st.selectbox('Chi tiết lượt kiểm tra', rows, format_func=lambda r:
-                             f"{r['employee_code']} - {r['employee_name']} | {r['checked_at']} | {r['status_label']} | {r['check_id'][:8]}")
-            st.json(r)
+                             f"{r['employee_name']} · {r['checked_at']} · {r['status_label']}")
+            st.info(f"{r['employee_name']}: {r['status_label']}. {r['reason_labels'] or 'Không có dấu hiệu cần chú ý.'}")
+            with st.expander('Xem dữ liệu kỹ thuật (JSON)'):
+                st.json(r)
             if operator and r['evidence_status'] in {'stored', 'partial'} and st.button('Mở bằng chứng'):
                 for modality in ('face', 'voice'):
                     try:
@@ -217,6 +239,9 @@ try:
                             'CI/CD': 'https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions'}.items():
             st.link_button(label, url)
         if st.button('Reload champion model'):
-            st.json(api('POST', '/v1/admin/reload-model'))
+            result = api('POST', '/v1/admin/reload-model')
+            st.success('Đã gửi yêu cầu tải model hiện hành.')
+            with st.expander('Xem dữ liệu kỹ thuật (JSON)'):
+                st.json(result)
 except Exception as exc:
     st.error(str(exc))

@@ -1,5 +1,6 @@
 """Simulated subscriptions and customer-owned API configuration."""
 import secrets
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -7,13 +8,28 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .auth import Principal, audit, digest, operator, platform
+from .auth import Principal, audit, digest, get_person, operator, platform
 from .config import get_settings
 from .db import get_db
-from .models import Tenant, TenantKey
+from .models import EnrollmentInvitation, Tenant, TenantKey, utcnow
 from .saas import derived_secret, validate_destination
 
 router = APIRouter()
+
+
+@router.post('/v1/people/{person_id}/enrollment-invitations', status_code=201)
+def invite_employee(person_id: str, db: Session = Depends(get_db), principal: Principal = Depends(operator)):
+    person = get_person(db, person_id, principal)
+    if not db.get(Tenant, principal.tenant_id).active:
+        raise HTTPException(403, 'Company subscription is inactive')
+    token = 'en_' + secrets.token_urlsafe(32)
+    expires_at = utcnow() + timedelta(hours=24)
+    db.add(EnrollmentInvitation(tenant_id=principal.tenant_id, person_id=person.id,
+                                digest=digest(token), expires_at=expires_at))
+    audit(db, principal, 'enrollment.invited', person.id)
+    db.commit()
+    return {'token': token, 'expires_at': expires_at.isoformat(), 'person_id': person.id,
+            'display_name': person.display_name}
 
 
 class Registration(BaseModel):
