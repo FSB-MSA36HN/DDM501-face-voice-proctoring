@@ -20,17 +20,19 @@ DATABASE = os.getenv("LEGACY_DATABASE", "/data/legacy.db")
 
 
 @app.post('/check')
-async def check_batch(request: Request, person_id: str = Form(...), session_id: str = Form(...),
+async def check_batch(request: Request, company_id: str = Form(...), person_id: str = Form(...), session_id: str = Form(...),
                       request_id: str = Form(...), consent: bool = Form(...),
                       face_file: UploadFile = File(...), voice_file: UploadFile = File(...)):
     browser_id(request)
+    customer = customer_config(company_id)
+    require_candidate(customer, person_id)
     files = {}
     for key, upload in [('face_file', face_file), ('voice_file', voice_file)]:
         payload = await upload.read(12*1024*1024+1)
         if len(payload) > 12*1024*1024:
             raise HTTPException(413, 'File exceeds demo limit')
         files[key] = (upload.filename, payload, upload.content_type)
-    return api('POST', '/v1/checks', data={'person_id': person_id, 'session_id': session_id,
+    return api('POST', '/v1/checks', customer=customer, data={'person_id': person_id, 'session_id': session_id,
                                         'request_id': request_id, 'consent': str(consent).lower()}, files=files)
 
 
@@ -40,17 +42,70 @@ def config():
     return json.loads(CONFIG.read_text())
 
 
+def customers():
+    primary = dict(config(), name='Demo nội bộ')
+    extra_file = CONFIG.parent / 'company-demo.json'
+    extra = json.loads(extra_file.read_text()).get('companies', []) if extra_file.exists() else []
+    return [primary, *extra]
+
+
+def customer_config(company_id):
+    customer = next((item for item in customers() if item['tenant_id'] == company_id), None)
+    if customer is None:
+        raise HTTPException(404, 'Company is unavailable in this demo')
+    return customer
+
+
+def require_candidate(customer, person_id):
+    candidate = next((p for p in api('GET', '/v1/people', customer=customer) if p['id'] == person_id), None)
+    if candidate is None:
+        raise HTTPException(404, 'Employee does not belong to this company')
+    return candidate
+
+
+@app.post('/enrollment-info')
+def enrollment_info(request: Request, token: str = Form(...)):
+    browser_id(request)
+    response = requests.post(os.getenv('API_URL', 'http://api:8000') + '/v1/public/enrollment-invitations/inspect',
+                             data={'token': token}, timeout=15)
+    if not response.ok:
+        raise HTTPException(response.status_code, 'This enrollment link is invalid or expired')
+    return response.json()
+
+
+@app.post('/enroll')
+async def enroll_employee(request: Request, token: str = Form(...), consent: bool = Form(...),
+                          face_files: list[UploadFile] = File(...), voice_files: list[UploadFile] = File(...)):
+    browser_id(request)
+    if len(face_files) != 2 or len(voice_files) != 2:
+        raise HTTPException(422, 'Provide two photos and two WAV recordings')
+    files = []
+    for field, uploads in (('face_files', face_files), ('voice_files', voice_files)):
+        for upload in uploads:
+            payload = await upload.read(12 * 1024 * 1024 + 1)
+            if len(payload) > 12 * 1024 * 1024:
+                raise HTTPException(413, 'File exceeds demo limit')
+            files.append((field, (upload.filename, payload, upload.content_type)))
+    response = requests.post(os.getenv('API_URL', 'http://api:8000') + '/v1/public/enroll',
+                             data={'token': token, 'consent': str(consent).lower()}, files=files, timeout=180)
+    if not response.ok:
+        raise HTTPException(response.status_code, response.json().get('detail', 'Enrollment failed'))
+    return response.json()
+
+
 def connection():
     Path(DATABASE).parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DATABASE)
     db.row_factory = sqlite3.Row
-    db.execute("CREATE TABLE IF NOT EXISTS attempts (browser TEXT PRIMARY KEY, session_id TEXT, person_id TEXT, exam_id TEXT, consumed INTEGER DEFAULT 0)")
+    db.execute("CREATE TABLE IF NOT EXISTS attempts (browser TEXT PRIMARY KEY, session_id TEXT, person_id TEXT, exam_id TEXT, consumed INTEGER DEFAULT 0, company_id TEXT)")
+    if 'company_id' not in {row[1] for row in db.execute('PRAGMA table_info(attempts)')}:
+        db.execute('ALTER TABLE attempts ADD COLUMN company_id TEXT')
     db.execute("CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, session_id TEXT, received_at INTEGER)")
     return db
 
 
-def api(method, path, **kwargs):
-    cfg = config()
+def api(method, path, customer=None, **kwargs):
+    cfg = customer or config()
     response = requests.request(method, os.getenv("API_URL", "http://api:8000") + path,
                                 headers={"X-API-Key": cfg["integration_key"]}, timeout=180, **kwargs)
     if not response.ok:
@@ -90,24 +145,34 @@ def index(request: Request):
 
 
 @app.get("/candidates")
-def candidates(request: Request):
+def candidates(request: Request, company_id: str):
     browser_id(request)
-    return [{"id": person["id"], "name": person["display_name"]} for person in api("GET", "/v1/people") if person["ready"]]
+    return [{"id": p["id"], "name": p["display_name"], "code": p['external_id'], "ready": p['ready']}
+            for p in api("GET", "/v1/people", customer=customer_config(company_id))]
+
+
+@app.get('/companies')
+def companies(request: Request):
+    browser_id(request)
+    return [{'id': item['tenant_id'], 'name': item['name']} for item in customers()]
 
 
 class StartBody(BaseModel):
+    company_id: str
     person_id: str
 
 
 @app.post("/start")
 def start(body: StartBody, request: Request):
     browser = browser_id(request)
-    result = api("POST", "/v1/sessions", json={"person_id": body.person_id, "exam_id": "ENGLISH-DEMO-501",
+    customer = customer_config(body.company_id)
+    require_candidate(customer, body.person_id)
+    result = api("POST", "/v1/sessions", customer=customer, json={"person_id": body.person_id, "exam_id": "ENGLISH-DEMO-501",
                                                "request_id": secrets.token_urlsafe(24)})
     with connection() as db:
-        db.execute("INSERT INTO attempts (browser, session_id, person_id, exam_id) VALUES (?, ?, ?, ?) "
-                   "ON CONFLICT(browser) DO UPDATE SET session_id=excluded.session_id, person_id=excluded.person_id, exam_id=excluded.exam_id, consumed=0",
-                   (browser, result["id"], body.person_id, result["exam_id"]))
+        db.execute("INSERT INTO attempts (browser, session_id, person_id, exam_id, company_id) VALUES (?, ?, ?, ?, ?) "
+                   "ON CONFLICT(browser) DO UPDATE SET session_id=excluded.session_id, person_id=excluded.person_id, exam_id=excluded.exam_id, company_id=excluded.company_id, consumed=0",
+                   (browser, result["id"], body.person_id, result["exam_id"], body.company_id))
     return {"verify_url": result["verify_url"], "session_id": result["id"]}
 
 
@@ -116,8 +181,9 @@ def current_attempt(request):
         row = db.execute("SELECT * FROM attempts WHERE browser=?", (browser_id(request),)).fetchone()
     if row is None:
         raise HTTPException(404, "Start a verification session first")
-    result = api("GET", "/v1/sessions/" + row["session_id"])
-    if (result["tenant_id"], result["person_id"], result["exam_id"]) != (config()["tenant_id"], row["person_id"], row["exam_id"]):
+    customer = customer_config(row['company_id'] or config()['tenant_id'])
+    result = api("GET", "/v1/sessions/" + row["session_id"], customer=customer)
+    if (result["tenant_id"], result["person_id"], result["exam_id"]) != (customer["tenant_id"], row["person_id"], row["exam_id"]):
         raise HTTPException(403, "Verification binding mismatch")
     return row, result
 
@@ -154,13 +220,10 @@ async def webhook(request: Request):
         tenant_id = payload['data']['tenant_id']
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(422, 'Invalid callback envelope') from exc
-    customer = config()
-    if tenant_id != customer['tenant_id']:
-        extra_file = CONFIG.parent/'company-demo.json'
-        companies = json.loads(extra_file.read_text()).get('companies', []) if extra_file.exists() else []
-        customer = next((c for c in companies if c['tenant_id'] == tenant_id), None)
-        if customer is None:
-            raise HTTPException(403, 'Unknown demo customer')
+    try:
+        customer = customer_config(tenant_id)
+    except HTTPException as exc:
+        raise HTTPException(403, 'Unknown demo customer') from exc
     timestamp = request.headers.get("X-Webhook-Timestamp", "")
     try:
         if abs(time.time() - int(timestamp)) > 300:

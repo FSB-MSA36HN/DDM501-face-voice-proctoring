@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -7,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -20,7 +21,15 @@ from .decision import decide
 from .explainability import explain
 from .metrics import FEEDBACK, LATENCY, MODEL_INFO, PEOPLE, REQUESTS, VERIFY
 from .migrations import migrate
-from .models import BiometricSample, Person, VerificationEvent, VerificationFeedback
+from .models import (
+    BiometricSample,
+    EnrollmentInvitation,
+    Person,
+    Tenant,
+    VerificationEvent,
+    VerificationFeedback,
+    utcnow,
+)
 from .registry import RegistryLoader
 from .schemas import (
     EnrollmentOut,
@@ -179,6 +188,84 @@ async def enroll(
     db.refresh(person)
     output = person_out(person)
     return EnrollmentOut(person_id=person_id, face_added=face_added, voice_added=voice_added, rejected=rejected, ready=output.ready)
+
+
+def employee_invitation(db: Session, token: str) -> tuple[EnrollmentInvitation, Person, Tenant]:
+    from .auth import digest as token_digest
+
+    if not token or len(token) > 128:
+        raise HTTPException(404, "Enrollment link is invalid or expired")
+    row = db.scalar(select(EnrollmentInvitation).where(EnrollmentInvitation.digest == token_digest(token)))
+    if row is None:
+        raise HTTPException(404, "Enrollment link is invalid or expired")
+    expires_at = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=utcnow().tzinfo)
+    if row.consumed_at is not None or expires_at <= utcnow():
+        raise HTTPException(404, "Enrollment link is invalid or expired")
+    person, tenant = db.get(Person, row.person_id), db.get(Tenant, row.tenant_id)
+    if person is None or tenant is None or not person.active or not tenant.active or person.tenant_id != tenant.id:
+        raise HTTPException(404, "Enrollment link is invalid or expired")
+    return row, person, tenant
+
+
+@app.post("/v1/public/enrollment-invitations/inspect")
+def inspect_employee_invitation(token: str = Form(...), db: Session = Depends(get_db)):
+    row, person, tenant = employee_invitation(db, token)
+    return {"company_name": tenant.name, "display_name": person.display_name,
+            "employee_code": person.external_ref or person.external_id, "expires_at": row.expires_at.isoformat()}
+
+
+@app.post("/v1/public/enroll", response_model=EnrollmentOut)
+async def enroll_employee(
+    token: str = Form(...), consent: bool = Form(...),
+    face_files: list[UploadFile] = File(...), voice_files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+) -> EnrollmentOut:
+    if not consent:
+        raise HTTPException(422, "Consent is required")
+    row, person, _ = employee_invitation(db, token)
+    if len(face_files) != 2 or len(voice_files) != 2:
+        raise HTTPException(422, "Provide exactly two face images and two WAV recordings")
+    prepared = []
+    for modality, files, allowed in (
+        ("face", face_files, {"image/jpeg", "image/png", "image/webp"}),
+        ("voice", voice_files, {"audio/wav", "audio/x-wav", "audio/wave"}),
+    ):
+        payloads = [await read_upload(upload, allowed) for upload in files]
+        hashes = [sha256(payload) for payload in payloads]
+        if hmac.compare_digest(hashes[0], hashes[1]):
+            raise HTTPException(422, f"Two distinct {modality} samples are required")
+        existing = db.scalars(select(BiometricSample.sha256).where(
+            BiometricSample.person_id == person.id, BiometricSample.modality == modality,
+            BiometricSample.sha256.in_(hashes))).all()
+        if existing:
+            raise HTTPException(422, f"A {modality} sample was already enrolled")
+        for payload, media_hash in zip(payloads, hashes, strict=True):
+            try:
+                result = await run_in_threadpool(biometrics.face if modality == "face" else biometrics.voice, payload)
+            except BiometricError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            prepared.append((modality, payload, media_hash, result))
+    consumed = db.execute(update(EnrollmentInvitation).where(
+        EnrollmentInvitation.id == row.id, EnrollmentInvitation.consumed_at.is_(None),
+        EnrollmentInvitation.expires_at > utcnow()).values(consumed_at=utcnow()).execution_options(synchronize_session=False))
+    if consumed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Enrollment link was already used")
+    try:
+        for modality, payload, media_hash, result in prepared:
+            object_key = await run_in_threadpool(object_store.put, person.id, modality, payload,
+                                                 "jpg" if modality == "face" else "wav")
+            db.add(BiometricSample(person_id=person.id, modality=modality,
+                                   embedding=result.embedding.tolist(), quality=result.quality,
+                                   object_key=object_key, sha256=media_hash))
+        audit(db, Principal(person.tenant_id, "employee", row.id), "person.self_enrolled", person.id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(person)
+    return EnrollmentOut(person_id=person.id, face_added=2, voice_added=2, rejected=[],
+                         ready=person_out(person).ready)
 
 
 async def perform_verification(
