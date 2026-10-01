@@ -139,7 +139,7 @@ def create_person(body: PersonCreate, db: Session = Depends(get_db), principal: 
 @app.get("/v1/people", response_model=list[PersonOut], dependencies=[Depends(require_key)])
 def list_people(db: Session = Depends(get_db), principal: Principal = Depends(authenticate)) -> list[PersonOut]:
     people = db.scalars(select(Person).where(Person.tenant_id == principal.tenant_id)
-                        .order_by(Person.created_at.desc()).limit(500)).unique().all()
+                        .order_by(Person.created_at.desc(), Person.id)).unique().all()
     return [person_out(person) for person in people]
 
 

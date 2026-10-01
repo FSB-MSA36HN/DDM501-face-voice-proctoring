@@ -12,6 +12,13 @@ Customer owns exam login, capture cadence, scoring and business decisions. Servi
 6. GET /v1/checks supports person_id/session_id/start/end/limit/offset. GET /v1/checks/{id} fetches canonical immutable result. Company decides consequences; no automatic exam admission contract in checks.
 7. Operator GET /v1/company/report[.csv|.pdf] exports same filtered history and employee/session first-last ranges. GET /v1/checks/{id}/evidence/face|voice streams protected evidence. No public S3 link/secret in report.
 
+## Local service pages
+
+- Employee demo: `http://localhost:18600/` remains open without login. The backend queries current active companies and all employees; use **Cap nhat danh sach** after registering a company or employee in another tab.
+- Company and platform administration: `http://localhost:18501/?page=login`. Submit an operator or platform key once to enter `?page=portal`. The key field is removed during the session. Logout clears credentials and page state; expiry after one hour or a revoked key returns to login.
+- Compose loads `API_KEY` for the demo backend and API from the same `ENV_FILE` (default `.env`). This credential stays on the server. Standalone demo deployments may set `EXAM_SERVICE_API_KEY` instead. The demo uses `GET /v1/exam/companies` and platform-only cross-company scope via `X-Tenant-ID`; company keys cannot select another tenant. Without either key environment variable, standalone legacy deployments retain the file-based configuration.
+- `GET /v1/people` returns the complete tenant roster, including employees beyond the previous 500-record cutoff. Technical monitoring pages are unchanged.
+
 ## Example backend request
 
 ```python

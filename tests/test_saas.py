@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.models import (
     BiometricSample,
+    Person,
     TenantKey,
     VerificationEvent,
     VerifySession,
@@ -59,6 +60,48 @@ def saas(monkeypatch, tmp_path):
 
 
 PLATFORM = {"X-API-Key": "platform-test"}
+
+
+def forward_to_api(client, method, url, timeout=None, **kwargs):
+    response = client.request(method, urlsplit(url).path, **kwargs)
+    return SimpleNamespace(ok=response.is_success, status_code=response.status_code, json=response.json)
+
+
+def test_people_directory_includes_employees_beyond_500(saas):
+    client, engine, _ = saas
+    owner = tenant(client, "Large company")
+    other = tenant(client, "Other company")
+    with Session(engine) as db:
+        db.add_all([Person(tenant_id=owner['id'], external_id=f'large-{i}',
+                           external_ref=f'EMP-{i}', display_name=f'Employee {i}') for i in range(503)])
+        db.add(Person(tenant_id=other['id'], external_id='other-employee', display_name='Other employee'))
+        db.commit()
+    response = client.get('/v1/people', headers=owner['operator'])
+    assert response.status_code == 200
+    assert len(response.json()) == 503
+    assert {p['external_id'] for p in response.json()} == {f'EMP-{i}' for i in range(503)}
+
+
+def test_exam_directory_queries_current_tenants_and_enforces_scope(saas):
+    client, engine, _ = saas
+    first, second = tenant(client, 'Live First'), tenant(client, 'Live Second')
+    p1, p2 = person(client, engine, first), person(client, engine, second)
+    assert client.get('/v1/exam/companies').status_code == 401
+    rows = client.get('/v1/exam/companies', headers=PLATFORM).json()
+    assert {first['id'], second['id']} <= {r['id'] for r in rows}
+    for role in ('operator', 'integration'):
+        assert client.get('/v1/exam/companies', headers=first[role]).json() == [
+            {'id': first['id'], 'name': 'Live First'}]
+        forged = dict(first[role], **{'X-Tenant-ID': second['id']})
+        assert client.get('/v1/people', headers=forged).status_code == 403
+    scoped = dict(PLATFORM, **{'X-Tenant-ID': second['id']})
+    assert [p['id'] for p in client.get('/v1/people', headers=scoped).json()] == [p2['id']]
+    assert client.post('/v1/sessions', headers=scoped, json={
+        'person_id': p1['id'], 'exam_id': 'exam', 'request_id': 'cross-tenant'}).status_code == 404
+    assert client.patch(f"/v1/admin/tenants/{second['id']}/subscription", headers=PLATFORM,
+                        json={'active': False}).status_code == 200
+    assert second['id'] not in {r['id'] for r in client.get('/v1/exam/companies', headers=PLATFORM).json()}
+    assert client.get('/v1/people', headers=scoped).status_code == 404
 
 
 def tenant(client, name):
@@ -166,13 +209,18 @@ def test_manual_review_does_not_rewrite_prediction_and_queues_second_event(saas)
     assert len(client.get("/v1/audit", headers=owner["operator"]).json()) >= 4
 
 
-def test_webhook_retry_and_legacy_signature_replay_protection(saas, monkeypatch):
+@pytest.mark.parametrize('live_directory', [False, True])
+def test_webhook_retry_and_legacy_signature_replay_protection(saas, monkeypatch, live_directory):
     client, engine, folder = saas
     owner = tenant(client, "Webhook organization")
     candidate = person(client, engine, owner)
     row = new_session(client, owner, candidate["id"])
     submit(client, row)
     legacy = importlib.import_module("legacy_demo.app")
+    monkeypatch.setattr(legacy, 'service_key', lambda: 'platform-test' if live_directory else None)
+    if live_directory:
+        monkeypatch.setattr(legacy.requests, 'request', lambda method, url, **kwargs:
+                            forward_to_api(client, method, url, **kwargs))
     path = folder / "config.json"
     path.write_text(json.dumps({"tenant_id": owner["id"], "integration_key": owner["integration"]["X-API-Key"],
                                 "webhook_secret": derived_secret("webhook", owner["id"])}))
@@ -194,6 +242,30 @@ def test_webhook_retry_and_legacy_signature_replay_protection(saas, monkeypatch)
                 return response
             assert deliver_one(db, post=post)
         assert delivery.status == "delivered" and delivery.attempts == 2
+
+
+def test_live_exam_hosted_session_stays_bound_to_company_and_browser(saas, monkeypatch):
+    client, engine, folder = saas
+    owner, other = tenant(client, 'Hosted owner'), tenant(client, 'Hosted other')
+    candidate = person(client, engine, owner)
+    legacy = importlib.import_module('legacy_demo.app')
+    monkeypatch.setattr(legacy, 'service_key', lambda: 'platform-test')
+    monkeypatch.setattr(legacy, 'DATABASE', str(folder / 'legacy.db'))
+    monkeypatch.setattr(legacy.requests, 'request', lambda method, url, **kwargs:
+                        forward_to_api(client, method, url, **kwargs))
+    with TestClient(legacy.app) as browser:
+        browser.get('/')
+        assert browser.post('/start', json={'company_id': other['id'],
+                                           'person_id': candidate['id']}).status_code == 404
+        created = browser.post('/start', json={'company_id': owner['id'], 'person_id': candidate['id']})
+        assert created.status_code == 200
+        row = dict(created.json(), id=created.json()['session_id'])
+        assert browser.post('/enter').status_code == 403
+        assert submit(client, row).json()['status'] == 'allow'
+        browser.get('/')
+        assert browser.get('/status').json()['session_id'] == row['id']
+        assert browser.post('/enter').json()['allowed']
+        assert browser.post('/enter').status_code == 409
 
 
 def test_callback_allowlist_blocks_arbitrary_networks(saas):
