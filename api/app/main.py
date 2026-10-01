@@ -23,7 +23,9 @@ from .metrics import FEEDBACK, LATENCY, MODEL_INFO, PEOPLE, REQUESTS, VERIFY
 from .migrations import migrate
 from .models import (
     BiometricSample,
+    CheckReview,
     EnrollmentInvitation,
+    IntegrityCheck,
     Person,
     Tenant,
     VerificationEvent,
@@ -387,12 +389,24 @@ def add_feedback(event_id: str, body: FeedbackIn, db: Session = Depends(get_db),
         VerificationEvent.id == event_id, Person.tenant_id == principal.tenant_id,
     )) is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy event")
+    reviewed_check = db.scalar(select(CheckReview.check_id).join(
+        IntegrityCheck, IntegrityCheck.id == CheckReview.check_id).where(
+        IntegrityCheck.event_id == event_id, CheckReview.tenant_id == principal.tenant_id))
+    if reviewed_check is not None:
+        raise HTTPException(status_code=409, detail='Use the check review endpoint for this event')
+    if body.reviewer == 'synthetic-simulation' and principal.role != 'platform':
+        raise HTTPException(status_code=403, detail='Synthetic labels require platform role')
+    reviewer = ('synthetic-simulation' if body.reviewer == 'synthetic-simulation'
+                else 'operator:' + principal.key_id)
     existing = db.scalar(select(VerificationFeedback).where(VerificationFeedback.event_id == event_id))
+    if existing and existing.reviewer == 'synthetic-simulation' and reviewer != 'synthetic-simulation':
+        raise HTTPException(status_code=409, detail='Synthetic feedback source is immutable')
     if existing:
-        existing.is_genuine, existing.reviewer, existing.notes = body.is_genuine, body.reviewer, body.notes
+        existing.is_genuine, existing.reviewer, existing.notes = body.is_genuine, reviewer, body.notes
         feedback = existing
     else:
-        feedback = VerificationFeedback(event_id=event_id, **body.model_dump())
+        feedback = VerificationFeedback(event_id=event_id, is_genuine=body.is_genuine,
+                                        reviewer=reviewer, notes=body.notes)
         db.add(feedback)
     audit(db, principal, "feedback.updated", event_id)
     db.commit()

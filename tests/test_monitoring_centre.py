@@ -84,8 +84,9 @@ def test_synthetic_labels_do_not_enter_human_performance(tmp_path):
     with engine.begin() as db:
         db.execute(text('CREATE TABLE verification_events (id TEXT,created_at INTEGER,accepted BOOLEAN)'))
         db.execute(text('CREATE TABLE verification_feedback (event_id TEXT,is_genuine BOOLEAN,reviewer TEXT)'))
-        db.execute(text("INSERT INTO verification_events VALUES ('a',1,1),('b',2,0)"))
-        db.execute(text("INSERT INTO verification_feedback VALUES ('a',1,'proctor'),('b',0,'synthetic-simulation')"))
+        db.execute(text("INSERT INTO verification_events VALUES ('a',1,1),('b',2,0),('c',3,1)"))
+        db.execute(text("INSERT INTO verification_feedback VALUES "
+                        "('a',1,'operator:proctor'),('b',0,'synthetic-simulation'),('c',1,'untrusted-client')"))
     assert len(load_feedback(url,20,'human')) == 1
     assert load_feedback(url,20,'human').created_at.tolist() == [1]
     assert load_feedback(url,20,'synthetic').created_at.tolist() == [2]

@@ -6,6 +6,7 @@ import math
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 from html import escape
 from pathlib import Path
 
@@ -33,8 +34,17 @@ REGISTRY_INFO = Gauge('biometric_registry_model_info', 'Current Registry alias',
 MODEL_METRIC = Gauge('biometric_registry_evaluation', 'Offline model evaluation, not live accuracy', ['alias', 'modality', 'metric'])
 THRESHOLD = Gauge('biometric_registry_threshold', 'Registered decision thresholds', ['alias', 'modality'])
 PROMOTION = Gauge('biometric_candidate_gate_passed', 'Candidate gate: 1 passed, 0 rejected, NaN unevaluated')
+MONITOR_PSI = Gauge('biometric_monitor_tenant_psi', 'Versioned tenant monitoring PSI',
+                    ['tenant', 'model_version', 'feature'])
+MONITOR_SAMPLES = Gauge('biometric_monitor_tenant_samples', 'Versioned tenant monitoring rows',
+                        ['tenant', 'model_version', 'window'])
+RETRAIN_RECOMMENDED = Gauge('biometric_retrain_recommended', 'Monitoring ETL recommends candidate training',
+                           ['tenant', 'model_version', 'status'])
+MONITOR_ETL_TIME = Gauge('biometric_monitoring_etl_unixtime', 'Latest batch monitoring ETL timestamp')
 DAG_STATE = Gauge('biometric_airflow_latest_run_state', 'Latest DAG run state', ['state'])
 DAG_TIME = Gauge('biometric_airflow_latest_run_unixtime', 'Latest DAG start time')
+MONITOR_DAG_STATE = Gauge('biometric_monitoring_dag_state', 'Latest batch monitoring DAG run state', ['state'])
+MONITOR_DAG_TIME = Gauge('biometric_monitoring_dag_unixtime', 'Latest batch monitoring DAG start time')
 TASK_STATE = Gauge('biometric_airflow_task_success', 'Latest DAG task success', ['task'])
 TASK_DURATION = Gauge('biometric_airflow_task_seconds', 'Latest task duration', ['task'])
 RAI_METRIC = Gauge('biometric_fairness_slice', 'Quality fairness slices; human and synthetic separated', ['source', 'slice', 'metric'])
@@ -65,6 +75,44 @@ def write_report(name, report):
         '<!doctype html><html><head><meta charset="utf-8"><title>' + escape(name)
         + '</title><style>body{font:16px system-ui;max-width:1100px;margin:40px auto}pre{white-space:pre-wrap}</style>'
         + '</head><body><h1>' + escape(name) + '</h1><pre>' + escape(content) + '</pre></body></html>', encoding='utf-8')
+
+
+def collect_monitoring():
+    path = Path(os.getenv('MONITORING_SUMMARY_PATH', '/data/monitoring/latest.json'))
+    report = json.loads(path.read_text(encoding='utf-8'))
+    MONITOR_PSI.clear()
+    MONITOR_SAMPLES.clear()
+    RETRAIN_RECOMMENDED.clear()
+    for row in report['tenants']:
+        tenant, version = row['tenant_id'], row['model_version']
+        for feature, value in row.get('psi', {}).items():
+            if value is not None and math.isfinite(value):
+                MONITOR_PSI.labels(tenant=tenant, model_version=version, feature=feature).set(value)
+        for window in ('reference', 'current'):
+            MONITOR_SAMPLES.labels(tenant=tenant, model_version=version, window=window).set(
+                row[window + '_count'])
+        RETRAIN_RECOMMENDED.labels(tenant=tenant, model_version=version,
+                                   status=row['status']).set(int(row['trigger_training']))
+    MONITOR_ETL_TIME.set(datetime.fromisoformat(report['calculated_at']).timestamp())
+    return report
+
+
+def format_alert(alert, monitor_summary=None):
+    labels, annotations = alert.get('labels', {}), alert.get('annotations', {})
+    name = labels.get('alertname', 'Alert')
+    if name == 'BiometricTenantDataDrift':
+        tenant = labels.get('tenant', 'unknown')
+        row = next((item for item in (monitor_summary or {}).get('tenants', [])
+                    if item['tenant_id'] == tenant), None)
+        company = row['tenant_name'] if row else tenant
+        sizes = f"{row['reference_count']}/{row['current_count']}" if row else 'chưa rõ'
+        action = 'xem xét drift và nguồn dữ liệu'
+        if row and row.get('recommendation') == 'train_candidate':
+            action = 'đã yêu cầu train challenger; theo dõi gate trước khi đổi champion'
+        return (f"⚠️ Drift dữ liệu · {company}\n"
+                f"Model {labels.get('model_version', '?')} · feature {labels.get('feature', '?')}\n"
+                f"Mẫu tham chiếu/hiện tại: {sizes}\nHành động: {action}")
+    return f"{labels.get('severity', 'info')} · {name}: {annotations.get('summary', '')}"
 
 
 def collect_database():
@@ -109,7 +157,7 @@ def collect_registry():
     MODEL_METRIC.clear()
     THRESHOLD.clear()
     PROMOTION.set(math.nan)
-    for alias in ('champion', 'candidate'):
+    for alias in ('champion', 'candidate', 'challenger'):
         response = requests.get(base + '/api/2.0/mlflow/registered-models/alias',
                                 params={'name': model, 'alias': alias}, timeout=10)
         if response.status_code == 404:
@@ -157,6 +205,22 @@ def collect_airflow():
         db_engine.dispose()
 
 
+def collect_monitoring_dag():
+    db_engine = create_engine(os.environ['AIRFLOW_DATABASE_URL'], pool_pre_ping=True)
+    try:
+        with db_engine.connect() as connection:
+            row = connection.execute(text("""
+                SELECT run_id, state, start_date FROM dag_run
+                WHERE dag_id='biometric_monitoring_pipeline'
+                ORDER BY execution_date DESC LIMIT 1
+            """)).mappings().first()
+            for state in ('success', 'failed', 'running', 'queued', 'no_run'):
+                MONITOR_DAG_STATE.labels(state=state).set(int((row['state'] if row else 'no_run') == state))
+            MONITOR_DAG_TIME.set(row['start_date'].timestamp() if row and row['start_date'] else math.nan)
+    finally:
+        db_engine.dispose()
+
+
 def collect_containers():
     base = os.getenv('DOCKER_API_URL', 'http://docker-observer:2375').rstrip('/')
     project = os.getenv('COMPOSE_PROJECT_NAME', 'ddm501-biometric-demo')
@@ -199,9 +263,13 @@ def send_telegram(payload):
         NOTIFICATIONS.labels(outcome='not_configured').inc()
         return False
     lines = ['DDM501 Face Voice Proctoring — ' + str(payload.get('status', 'unknown'))]
+    try:
+        monitoring = json.loads(Path(os.getenv('MONITORING_SUMMARY_PATH', '/data/monitoring/latest.json'))
+                                .read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        monitoring = None
     for alert in payload.get('alerts', [])[:15]:
-        labels, annotations = alert.get('labels', {}), alert.get('annotations', {})
-        lines.append(f"{labels.get('severity', 'info')} · {labels.get('alertname', 'Alert')}: {annotations.get('summary', '')}")
+        lines.append(format_alert(alert, monitoring))
     lines.append(os.getenv('PUBLIC_GRAFANA_URL', 'http://localhost:13000/d/biometric-overview'))
     try:
         status, result = request_telegram(token, 'sendMessage', {'chat_id': chat, 'text': '\n'.join(lines)[:4000]})
@@ -214,7 +282,10 @@ def send_telegram(payload):
 
 
 def run_once():
-    for component, function in [('database', collect_database), ('registry', collect_registry), ('airflow', collect_airflow), ('docker', collect_containers)]:
+    for component, function in [('database', collect_database), ('registry', collect_registry),
+                                ('airflow', collect_airflow), ('monitoring_dag', collect_monitoring_dag),
+                                ('docker', collect_containers),
+                                ('monitoring', collect_monitoring)]:
         COLLECTION.labels(component=component).set(0)
         try:
             function()

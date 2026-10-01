@@ -173,3 +173,17 @@ class CheckEvidence(Base):
     content_type: Mapped[str] = mapped_column(String(100))
     sha256: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(Integer)
+
+
+class CheckReview(Base):
+    """A tenant operator's judgement, separate from immutable model output."""
+    __tablename__ = "check_reviews"
+    check_id: Mapped[str] = mapped_column(ForeignKey("integrity_checks.id"), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    identity_truth: Mapped[str] = mapped_column(String(16))
+    cheating_judgement: Mapped[str] = mapped_column(String(16))
+    selection_reason: Mapped[str] = mapped_column(String(24))
+    reviewer: Mapped[str] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

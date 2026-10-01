@@ -16,21 +16,25 @@ flowchart LR
         IDMODEL["Xác minh danh tính 1:1<br/>YuNet/SFace + ECAPA"]
         INTEGRITY["Tín hiệu integrity<br/>nhiều mặt, PAD, AASIST<br/>thay giọng, dùng lại media"]
         DB[("PostgreSQL<br/>tenant, embedding, check<br/>event, webhook outbox")]
-        S3[("MinIO<br/>bằng chứng nghi vấn<br/>MLflow artifacts")]
+        S3[("MinIO<br/>bằng chứng nghi vấn<br/>MLflow artifacts, data lake")]
         WEBHOOK["Webhook worker<br/>HMAC + retry"]
     end
 
     subgraph ML["Vòng đời model — Airflow và MLflow"]
-        AIRFLOW["Airflow DAG<br/>theo lịch hoặc chạy thủ công"]
+        AIRFLOW["Training DAG<br/>hàng tuần / monitoring trigger"]
         SNAP["1. Snapshot có phiên bản<br/>fingerprint SHA-256"]
         DQ["2. Data quality gate<br/>kiểm tra mẫu và embedding"]
-        TRAIN["3. Feature pairs + calibration<br/>CV theo identity, holdout riêng"]
-        CAND["MLflow candidate<br/>params, metrics, artifacts"]
-        RAI["4. Responsible AI audit<br/>human/synthetic tách riêng"]
-        GATE["5. Promotion gate<br/>FAR/FRR + counts + fingerprint"]
+        LAKE["3. Dataset manifest + split<br/>MinIO SHA-256"]
+        TRAIN["4. Feature pairs + calibration<br/>CV theo identity, holdout riêng"]
+        CAND["MLflow candidate / challenger<br/>params, metrics, artifacts"]
+        RAI["5. Responsible AI audit<br/>human/synthetic tách riêng"]
+        GATE["6. Promotion gate<br/>paired holdout + reviewed shadow"]
         CHAMP["MLflow champion<br/>identity policy / thresholds"]
         KEEP["Không đạt gate<br/>giữ champion đang phục vụ"]
-        RELOAD["6. Reload champion<br/>qua API quản trị"]
+        RELOAD["7. Reload champion + health soak<br/>lỗi thì rollback alias/version"]
+        MONDAG["Monitoring DAG hàng giờ<br/>ETL theo tenant/model"]
+        WINDOWS["Reference + current snapshot<br/>input không nhãn / human labels"]
+        DECIDE["PSI + FAR/FRR đủ mẫu<br/>2 cửa sổ drift / cooldown"]
     end
 
     subgraph OPS["Monitoring và vận hành"]
@@ -64,7 +68,12 @@ flowchart LR
     WEBHOOK -->|"Signed webhook"| EXAM
 
     DB -->|"Snapshot: mặc định tenant demo"| AIRFLOW
-    AIRFLOW --> SNAP --> DQ --> TRAIN --> CAND --> RAI --> GATE
+    AIRFLOW --> SNAP --> DQ --> LAKE --> TRAIN --> CAND --> RAI --> GATE
+    LAKE --> S3
+    DB -->|"Check + review đúng tenant"| MONDAG --> WINDOWS --> DECIDE
+    WINDOWS --> S3
+    DECIDE -->|"Đủ bằng chứng + tenant được phép train"| AIRFLOW
+    DECIDE -->|"Trạng thái / khuyến nghị"| OPM
     CAND -->|"Ghi artifacts"| S3
     GATE -->|"Đạt"| CHAMP --> RELOAD --> API
     GATE -->|"Không đạt"| KEEP
@@ -89,12 +98,12 @@ flowchart LR
     PROM -->|"Firing / resolved"| ALERT -->|"Webhook"| OPM --> TELEGRAM
     GRAFANA -->|"Theo dõi / điều tra"| OPERATOR
     TELEGRAM -->|"Cảnh báo để xử lý"| OPERATOR
-    OPERATOR -.->|"Sau khi đánh giá: chạy DAG thủ công"| AIRFLOW
+    OPERATOR -.->|"Có thể chạy DAG thủ công"| AIRFLOW
     CI -->|"Triển khai stack"| DV
 ```
 
 **Ranh giới nghiệp vụ:** công ty tự điều khiển lịch capture, bài thi, điểm và quyết định; DDM501 trả kết quả từng check ngay qua API và signed webhook. Portal chỉ hiển thị dữ liệu của công ty đó. Ảnh/audio của check thường không được lưu theo cấu hình mặc định; ảnh/audio nghi vấn được lưu làm bằng chứng trong MinIO.
 
-**Vòng MLOps chung:** sáu bước đánh số là sáu task thực tế của DAG `biometric_model_pipeline`. Airflow hiệu chỉnh, đánh giá và promotion **identity policy**; serving dùng champion được nạp, còn monitoring quan sát dữ liệu/model/dịch vụ sau triển khai. MiniFASNet/AASIST là detector nghiên cứu có trọng số đã pin, chưa có benchmark anti-spoof trên dữ liệu khách hàng. Gate không đạt thì giữ champion đang phục vụ; MLflow quản lý Registry/artifacts, còn MinIO giữ artifact.
+**Vòng MLOps chung:** bảy bước đánh số là bảy task của DAG `biometric_model_pipeline`. DAG `biometric_monitoring_pipeline` tạo cửa sổ không nhãn, nhãn human tách riêng, tính drift và tự yêu cầu training khi đủ điều kiện. Training mặc định chỉ dùng tenant `demo`; dữ liệu các công ty khách hàng không tự đưa vào training. Candidate/challenger được so với champion trên cùng holdout và nhãn audit; thiếu bằng chứng hoặc không cải thiện thì giữ champion. Sau promotion, lỗi readiness sẽ rollback. Đây là shadow offline và kiểm tra sức khỏe serving, chưa có canary định tuyến traffic. Airflow hiệu chỉnh **identity policy**; MiniFASNet/AASIST là detector nghiên cứu có trọng số đã pin, chưa có benchmark anti-spoof trên dữ liệu khách hàng.
 
-**Phản hồi vận hành:** Prometheus **chủ động kéo** metric từ API, webhook worker, drift-monitor và ops-monitor. Grafana truy vấn Prometheus, PostgreSQL và Loki; Alertmanager gửi sự kiện đến ops-monitor để chuyển cảnh báo kỹ thuật qua Telegram. Người vận hành xem xét rồi mới kích hoạt DAG nếu cần: cảnh báo **không tự động retrain**. Công ty không dùng Telegram này để nhận kết quả check. Docker stats đi qua proxy và ops-monitor; bản Compose hiện không có `node_exporter`.
+**Phản hồi vận hành:** Prometheus **chủ động kéo** metric từ API, webhook worker, drift-monitor và ops-monitor. Grafana truy vấn Prometheus, PostgreSQL và Loki; Alertmanager gửi sự kiện đến ops-monitor để chuyển cảnh báo kỹ thuật qua Telegram. Monitoring DAG có thể tự trigger training sau hai cửa sổ drift khác nhau hoặc hiệu năng human audit giảm, nhưng promotion luôn qua gate. Công ty không dùng Telegram này để nhận kết quả check. Docker stats đi qua proxy và ops-monitor; bản Compose hiện không có `node_exporter`.

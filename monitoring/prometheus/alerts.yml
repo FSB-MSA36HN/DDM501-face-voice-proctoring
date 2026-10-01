@@ -66,6 +66,25 @@ groups:
         annotations:
           summary: "Biometric input drift detected"
           description: "At least one production feature has PSI > 0.2 for 2 minutes."
+      - alert: BiometricTenantDataDrift
+        expr: biometric_monitor_tenant_psi > 0.2
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Tenant feature drift; inspect the versioned monitoring window"
+          description: "Tenant {{ $labels.tenant }}, model {{ $labels.model_version }}, feature {{ $labels.feature }} has PSI {{ $value }}. Check sample counts and review the monitoring DAG before retraining."
+      - alert: BiometricRetrainRecommended
+        expr: biometric_retrain_recommended == 1
+        for: 2m
+        labels: {severity: info}
+        annotations:
+          summary: "Monitoring evidence requested challenger training; promotion still requires paired and reviewed gates"
+      - alert: MonitoringETLStale
+        expr: time() - biometric_monitoring_etl_unixtime > 7200
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Batch monitoring DAG has not produced fresh evidence for two hours"
       - alert: BiometricHighReviewRate
         expr: sum(rate(biometric_verifications_total{decision="review"}[10m])) / clamp_min(sum(rate(biometric_verifications_total[10m])), 0.001) > 0.35
         for: 5m

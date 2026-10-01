@@ -1,3 +1,4 @@
+import hashlib
 import importlib
 import io
 
@@ -7,7 +8,7 @@ import pytest
 from app.biometrics import BiometricEngine
 from app.config import get_settings
 from app.db import get_db
-from app.models import WebhookDelivery
+from app.models import IntegrityCheck, VerificationFeedback, WebhookDelivery
 from app.registry import RuntimeModel
 from fastapi.testclient import TestClient
 from scipy.io import wavfile
@@ -94,6 +95,98 @@ def send(client, owner, person, media, request_id='capture-1', session_id='ANNUA
     return client.post('/v1/checks', headers=owner['integration'], files=media,
                        data={'person_id': person['id'], 'session_id': session_id,
                              'request_id': request_id, 'consent': 'true'})
+
+
+def test_company_review_is_tenant_scoped_and_separates_identity_from_cheating(checks_api):
+    client, engine, _, media, _ = checks_api
+    owner, other = company(client, 'Review owner'), company(client, 'Other reviewer')
+    person = employee(client, owner, media)
+    check_id = send(client, owner, person, media).json()['check_id']
+    payload = {'identity_truth': 'genuine', 'cheating_judgement': 'confirmed',
+               'selection_reason': 'manual', 'notes': 'Independent review'}
+    path = f'/v1/checks/{check_id}/review'
+    assert client.put(path, headers=other['operator'], json=payload).status_code == 404
+    assert client.put(path, headers=owner['integration'], json=payload).status_code == 403
+    response = client.put(path, headers=owner['operator'], json=payload)
+    assert response.status_code == 200, response.text
+    assert response.json()['identity_truth'] == 'genuine'
+    assert response.json()['cheating_judgement'] == 'confirmed'
+    assert response.json()['source'] == 'human'
+    assert client.get(path, headers=other['operator']).status_code == 404
+    expected_reason = ('random_audit' if
+                       int(hashlib.sha256(check_id.encode()).hexdigest()[:8], 16) % 10 == 0
+                       else 'manual')
+    assert client.get(path, headers=owner['operator']).json()['selection_reason'] == expected_reason
+    with Session(engine) as db:
+        feedback = db.scalars(select(VerificationFeedback)).one()
+        assert feedback.is_genuine is True
+        assert feedback.reviewer.startswith('operator:')
+    payload['identity_truth'] = 'unknown'
+    payload['cheating_judgement'] = 'dismissed'
+    assert client.put(path, headers=owner['operator'], json=payload).status_code == 200
+    with Session(engine) as db:
+        assert db.scalars(select(VerificationFeedback)).all() == []
+
+
+def test_review_queue_samples_verified_checks_independently_of_model_decision(checks_api):
+    client, _, _, media, _ = checks_api
+    owner, other = company(client, 'Audit queue owner'), company(client, 'Audit queue other')
+    person = employee(client, owner, media)
+    check_ids = [send(client, owner, person, media, request_id=f'audit-{i}',
+                      session_id=f'exam-{i}').json()['check_id'] for i in range(12)]
+    queue = client.get('/v1/reviews/queue', headers=owner['operator'])
+    assert queue.status_code == 200, queue.text
+    expected = {check_id for check_id in check_ids
+                if int(hashlib.sha256(check_id.encode()).hexdigest()[:8], 16) % 10 == 0}
+    selected = {row['check_id'] for row in queue.json()['items']
+                if row['selection_reason'] == 'random_audit'}
+    assert selected == expected
+    with Session(checks_api[1]) as db:
+        changed = db.get(IntegrityCheck, check_ids[0])
+        changed.integrity_status = 'suspicious'
+        db.commit()
+    rerun = client.get('/v1/reviews/queue', headers=owner['operator']).json()['items']
+    assert {row['check_id'] for row in rerun if row['selection_reason'] == 'random_audit'} == expected
+    unselected = next(check_id for check_id in check_ids if check_id not in expected)
+    forged = {'identity_truth': 'genuine', 'cheating_judgement': 'dismissed',
+              'selection_reason': 'random_audit'}
+    assert client.put(f'/v1/checks/{unselected}/review', headers=owner['operator'],
+                      json=forged).status_code == 422
+    assert client.get('/v1/reviews/queue', headers=other['operator']).json()['items'] == []
+    assert client.get('/v1/reviews/queue', headers=owner['integration']).status_code == 403
+
+
+def test_selected_audit_provenance_cannot_be_changed_by_reviewer(checks_api, monkeypatch):
+    from app import checks
+
+    client, _, _, media, _ = checks_api
+    owner = company(client, 'Audit provenance')
+    person = employee(client, owner, media)
+    check_id = send(client, owner, person, media).json()['check_id']
+    monkeypatch.setattr(checks, 'selected_for_random_audit', lambda _: True)
+    response = client.put(f'/v1/checks/{check_id}/review', headers=owner['operator'],
+                          json={'identity_truth': 'genuine', 'cheating_judgement': 'dismissed',
+                                'selection_reason': 'manual'})
+    assert response.status_code == 200
+    assert response.json()['selection_reason'] == 'random_audit'
+
+
+def test_legacy_feedback_cannot_spoof_reviewer_or_overwrite_check_review(checks_api):
+    client, _, _, media, _ = checks_api
+    owner = company(client, 'Feedback provenance')
+    person = employee(client, owner, media)
+    result = send(client, owner, person, media).json()
+    check_id, event_id = result['check_id'], result['event_id']
+    path = f'/v1/events/{event_id}/feedback'
+    forged = {'is_genuine': True, 'reviewer': 'independent-human'}
+    response = client.put(path, headers=owner['operator'], json=forged)
+    assert response.status_code == 201
+    assert response.json()['reviewer'].startswith('operator:')
+    assert response.json()['reviewer'] != forged['reviewer']
+    review = {'identity_truth': 'impostor', 'cheating_judgement': 'confirmed',
+              'selection_reason': 'suspicious'}
+    assert client.put(f'/v1/checks/{check_id}/review', headers=owner['operator'], json=review).status_code == 200
+    assert client.put(path, headers=owner['operator'], json=forged).status_code == 409
 
 
 def test_batch_check_integration_idempotency_and_webhook(checks_api):

@@ -33,7 +33,8 @@ def test_registry_aliases_keep_missing_metrics_unknown(monkeypatch, tmp_path):
     run = {'run':{'data':{'params':[{'key':'face_threshold','value':'.4'},
                                   {'key':'evaluation_method','value':'identity-disjoint-max-template'}],
                           'metrics':[{'key':'face_holdout_far','value':.02}]}}}
-    get = Mock(side_effect=[response({'model_version':version}), response(run), response({},404)])
+    get = Mock(side_effect=[response({'model_version':version}), response(run),
+                            response({},404), response({},404)])
     monkeypatch.setattr(ops.requests, 'get', get)
     ops.collect_registry()
     report = json.loads((tmp_path/'model-evaluation.json').read_text())
@@ -41,6 +42,7 @@ def test_registry_aliases_keep_missing_metrics_unknown(monkeypatch, tmp_path):
     assert report['champion']['metrics']['face_holdout_far'] == .02
     assert ops.MODEL_METRIC.labels(alias='champion',modality='face',metric='holdout_far')._value.get() == .02
     assert get.call_args_list[2].kwargs['params']['alias'] == 'candidate'
+    assert get.call_args_list[3].kwargs['params']['alias'] == 'challenger'
 
 
 def test_database_quality_and_fairness_are_not_confused(monkeypatch, tmp_path):
@@ -77,6 +79,15 @@ def test_airflow_task_duration_and_empty_run(monkeypatch, tmp_path):
     assert not list(ops.TASK_STATE.collect()[0].samples)
 
 
+def test_monitoring_dag_state_is_reported_separately(monkeypatch):
+    monkeypatch.setenv('AIRFLOW_DATABASE_URL', 'postgresql://test/airflow')
+    row = {'run_id': 'monitor-run', 'state': 'success', 'start_date': datetime.now(timezone.utc)}
+    connection(monkeypatch, [Mock(mappings=Mock(return_value=Mock(first=Mock(return_value=row))))])
+    ops.collect_monitoring_dag()
+    assert ops.MONITOR_DAG_STATE.labels(state='success')._value.get() == 1
+    assert ops.MONITOR_DAG_TIME._value.get() > 0
+
+
 def test_poll_isolates_collector_failure_and_probes_scheduler(monkeypatch, caplog):
     def fail():
         raise RuntimeError('credential-bearing message')
@@ -84,6 +95,8 @@ def test_poll_isolates_collector_failure_and_probes_scheduler(monkeypatch, caplo
     monkeypatch.setattr(ops, 'collect_registry', lambda: None)
     monkeypatch.setattr(ops, 'collect_airflow', lambda: None)
     monkeypatch.setattr(ops, 'collect_containers', lambda: None)
+    monkeypatch.setattr(ops, 'collect_monitoring', lambda: None)
+    monkeypatch.setattr(ops, 'collect_monitoring_dag', lambda: None)
     monkeypatch.setattr(ops, 'PROBES', {'airflow':'http://airflow/health','api':'http://api/ready','legacy':'ignored'})
     monkeypatch.setenv('OPS_DISABLED_PROBES','legacy')
     monkeypatch.setattr(ops.requests, 'get', Mock(side_effect=[response({'scheduler':{'status':'unhealthy'}}),

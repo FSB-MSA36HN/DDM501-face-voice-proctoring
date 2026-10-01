@@ -188,6 +188,17 @@ try:
                         st.json(result)
 
     elif page == 'Lịch sử & báo cáo':
+        review_suggestions = {}
+        if operator:
+            queue = api('GET', '/v1/reviews/queue')
+            review_suggestions = {item['check_id']: item['selection_reason'] for item in queue['items']}
+            st.subheader('Các lượt cần kiểm duyệt')
+            st.caption('Bao gồm lượt nghi vấn và một mẫu kiểm tra ngẫu nhiên từ mỗi 10 lượt bình thường gần đây.')
+            if queue['items']:
+                st.dataframe(pd.DataFrame(queue['items']), use_container_width=True, hide_index=True,
+                             column_config=COLUMNS)
+            else:
+                st.info('Hiện không có lượt chờ kiểm duyệt.')
         people = api('GET', '/v1/people')
         person = st.selectbox('Phạm vi nhân viên', [None]+people, format_func=lambda p:
                               'Tất cả' if p is None else f"{p['external_id']} - {p['display_name']}")
@@ -227,6 +238,29 @@ try:
                         st.markdown(html, unsafe_allow_html=True)
                     except Exception as exc:
                         st.warning(str(exc))
+            if operator:
+                with st.expander('Kiểm duyệt kết quả và gắn nhãn'):
+                    st.caption('Nhãn của người quản trị tách khỏi kết quả model. Hãy kiểm tra ngẫu nhiên cả lượt bình thường để đo tỷ lệ sai lệch.')
+                    identity_labels = {'Chưa xác định': 'unknown', 'Đúng người': 'genuine', 'Khác người': 'impostor'}
+                    cheating_labels = {'Chưa đủ căn cứ': 'undetermined', 'Xác nhận có gian lận': 'confirmed',
+                                       'Không xác nhận gian lận': 'dismissed'}
+                    reason_labels = {'Hệ thống báo nghi vấn': 'suspicious', 'Kiểm tra ngẫu nhiên': 'random_audit',
+                                     'Điểm gần ngưỡng': 'near_threshold', 'Kiểm tra thủ công': 'manual'}
+                    with st.form('review-'+r['check_id']):
+                        identity_label = st.selectbox('Danh tính thực tế', list(identity_labels))
+                        cheating_label = st.selectbox('Kết luận về gian lận', list(cheating_labels))
+                        selection_label = st.selectbox('Vì sao chọn lượt này để kiểm duyệt', list(reason_labels),
+                                                       index=list(reason_labels.values()).index(
+                                                           review_suggestions.get(r['check_id'], 'manual')))
+                        review_notes = st.text_area('Ghi chú và căn cứ')
+                        if st.form_submit_button('Lưu kết quả kiểm duyệt', type='primary'):
+                            review = api('PUT', f"/v1/checks/{r['check_id']}/review", json={
+                                'identity_truth': identity_labels[identity_label],
+                                'cheating_judgement': cheating_labels[cheating_label],
+                                'selection_reason': reason_labels[selection_label], 'notes': review_notes or None})
+                            st.success('Đã lưu kết quả kiểm duyệt riêng với dự đoán của model.')
+                            with st.expander('Xem dữ liệu kỹ thuật (JSON)'):
+                                st.json(review)
 
     elif page == 'API & Webhook':
         config = api('GET', '/v1/company')

@@ -98,7 +98,8 @@ def test_feedback_query_excludes_unreviewed_and_limits_latest(tmp_path):
         connection.execute(text("CREATE TABLE verification_events (id TEXT, created_at INTEGER, accepted BOOLEAN)"))
         connection.execute(text("CREATE TABLE verification_feedback (event_id TEXT, is_genuine BOOLEAN, reviewer TEXT)"))
         connection.execute(text("INSERT INTO verification_events VALUES ('a', 1, 1), ('b', 2, 0), ('c', 3, 1)"))
-        connection.execute(text("INSERT INTO verification_feedback VALUES ('a', 1, 'proctor'), ('b', 1, 'proctor')"))
+        connection.execute(text("INSERT INTO verification_feedback VALUES "
+                                "('a', 1, 'operator:proctor'), ('b', 1, 'operator:proctor')"))
     frame = monitor.load_feedback(url, 1)
     assert frame.to_dict("records") == [{"created_at": 2, "prediction": 0, "target": 1}]
     engine.dispose()

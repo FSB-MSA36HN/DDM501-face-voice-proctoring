@@ -18,7 +18,9 @@ Grafana http://localhost:13000/d/biometric-overview; Airflow http://localhost:18
 
 SFace/YuNet + ECAPA xác minh danh tính. MiniFASNet face PAD và AASIST audio anti-spoof là detector nghiên cứu pretrained/pinned. ECAPA segments là heuristic thay người nói. Missing detector trả inconclusive. Chưa có benchmark khách hàng cho mọi deepfake, physical replay hoặc simultaneous voices.
 
-PostgreSQL lưu embedding/metadata/checks; MinIO lưu suspicious evidence và MLflow artifacts. Raw enrollment và media check hợp lệ không được giữ mặc định. Lịch sử, exports và evidence downloads đều tenant-scoped. Webhook HMAC có durable outbox/retry; receiver phải deduplicate.
+PostgreSQL lưu embedding/metadata/checks/review; MinIO lưu suspicious evidence, MLflow artifacts và các snapshot feature/nhãn có phiên bản cho MLOps. Raw enrollment và media check hợp lệ không được giữ mặc định. Lịch sử, exports và evidence downloads đều tenant-scoped. Webhook HMAC có durable outbox/retry; receiver phải deduplicate.
+
+Airflow có hai DAG: `biometric_monitoring_pipeline` chạy mỗi giờ để chốt drift và nhãn human, `biometric_model_pipeline` tạo challenger và chỉ đổi champion khi qua gate. Xem [vòng Continuous MLOps](docs/CONTINUOUS_MLOPS.md) để biết điều kiện trigger, data lake, rollback và giới hạn hiện tại.
 
 ## Chạy và kiểm chứng
 
@@ -30,6 +32,6 @@ python pipeline/verify_company_service.py
 python pipeline/verify_monitoring_centre.py
 ```
 
-[Report](PROJECT_REPORT.md) · [Sơ đồ kiến trúc Mermaid](docs/ARCHITECTURE_OVERVIEW.md) · [Scope](PROJECT_REQUIREMENTS.md) · [Kiến trúc kỹ thuật](ARCHITECTURE.md) · [Tích hợp](SAAS_INTEGRATION.md) · [Mapping](RUBRIC_MAPPING.md) · [Bằng chứng](VERIFICATION.md) · [Vận hành](OPERATIONS.md).
+[Report](PROJECT_REPORT.md) · [Sơ đồ kiến trúc Mermaid](docs/ARCHITECTURE_OVERVIEW.md) · [Continuous MLOps](docs/CONTINUOUS_MLOPS.md) · [Demo và bàn giao](docs/DEMO_HANDOVER_GUIDE.md) · [Scope](PROJECT_REQUIREMENTS.md) · [Kiến trúc kỹ thuật](ARCHITECTURE.md) · [Tích hợp](SAAS_INTEGRATION.md) · [Mapping](RUBRIC_MAPPING.md) · [Bằng chứng](VERIFICATION.md) · [Vận hành](OPERATIONS.md).
 
 GitHub https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring. Demo Grafana/Airflow admin/admin, loopback only. Không commit credentials, biometric media hoặc backups.

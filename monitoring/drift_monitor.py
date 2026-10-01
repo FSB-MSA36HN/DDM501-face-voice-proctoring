@@ -41,7 +41,7 @@ def load_feedback(database_url: str, limit: int, source: str = "human") -> pd.Da
                 SELECT e.created_at, e.accepted AS prediction, f.is_genuine AS target
                 FROM verification_events e JOIN verification_feedback f ON f.event_id = e.id
                 WHERE (:source = 'synthetic' AND f.reviewer = 'synthetic-simulation')
-                   OR (:source = 'human' AND f.reviewer != 'synthetic-simulation')
+                   OR (:source = 'human' AND f.reviewer LIKE 'operator:%')
                 ORDER BY e.created_at DESC, e.id DESC LIMIT :limit
             """), {"limit": limit, "source": source}).mappings().all()
         return pd.DataFrame(rows, columns=["created_at", "prediction", "target"])
@@ -155,7 +155,7 @@ def load_events(database_url: str, limit: int) -> tuple[pd.DataFrame, float | No
         performance = connection.execute(text("""
             SELECT AVG(CASE WHEN e.accepted = f.is_genuine THEN 1.0 ELSE 0.0 END) AS accuracy
             FROM verification_events e JOIN verification_feedback f ON f.event_id = e.id
-            WHERE f.reviewer != 'synthetic-simulation'
+            WHERE f.reviewer LIKE 'operator:%'
         """)).scalar()
     engine.dispose()
     return pd.DataFrame(rows, columns=["created_at", *FEATURES]), None if performance is None else float(performance)
