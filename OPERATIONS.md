@@ -32,7 +32,14 @@ CPU/RAM/network/block IO lấy qua Docker API read-only proxy. Review queue ch�
 
 `biometric_reviewed_performance{source,metric,window}` có accuracy/precision/recall/F1/FAR/FRR. `biometric_reviewed_report_success{source}` biểu thị tính hợp lệ. Positive là genuine. REVIEW được tính là không accept. Đây là performance trên reviewed subset, có selection bias.
 
-Tạo kịch bản kỹ thuật: `python pipeline/simulate_drift.py --samples 100 --with-feedback`. Reference được thiết kế đúng và current cố tình sai. Alert `BiometricSyntheticPerformanceDegraded` có `evidence=synthetic_demo`; không trình bày như human accuracy. Human alert giữ tên `BiometricPerformanceDegraded`.
+Kịch bản legacy `python pipeline/simulate_drift.py --samples 100 --with-feedback` tạo event/nhãn synthetic trong DB ứng dụng chính, không có isolation của trang simulation mới. Không dùng nó để minh họa một demo không tác động dữ liệu runtime. Alert `BiometricSyntheticPerformanceDegraded` có `evidence=synthetic_demo`; human alert giữ tên `BiometricPerformanceDegraded`.
+
+Demo hiện hành: đăng nhập platform trên portal và mở **Simulation MLOps**. Hai nút
+kịch bản dùng DB/MLflow/volume riêng; nút **Restore demo baseline** reset routing và
+aliases demo, giữ lịch sử. `biometric_simulation` poll queue mỗi phút; Prometheus và
+Alertmanager gửi alert thật về simulation receiver trước khi retrain, không gửi
+Telegram. Xem [hướng dẫn](docs/SIMULATION.md). Không trộn bằng chứng tổng hợp này
+với metric human hoặc đánh giá capacity production.
 
 ## Telegram
 
@@ -43,19 +50,53 @@ Bot: `@ddm501_face_voice_proctoring_bot`. `.env` giữ `TELEGRAM_BOT_TOKEN`, `TE
 ## Kiểm chứng và recovery
 
 ```powershell
-python pipeline/verify_stack.py --dag-run isolated_holdout_20260928 --inference --require-alerts
-python pipeline/verify_monitoring_centre.py --send-alert
-python pipeline/verify_saas.py
-python pipeline/verify_recovery.py --rollback
+.venv/Scripts/python.exe pipeline/verify_monitoring_centre.py
+docker compose ps
+Invoke-RestMethod http://localhost:18100/health
+Invoke-RestMethod http://localhost:18100/ready
 ```
 
-Inference/SaaS tạo thêm event demo. Recovery lưu dump dưới `data/backups/`; restore vào DB tạm riêng, so sánh row counts rồi xóa DB tạm. `--rollback` đổi champion trong thời gian ngắn, reload/readiness rồi phục hồi champion ban đầu trong `finally`. Khi dùng thật phải điều phối traffic.
+Verifier monitoring yêu cầu dữ liệu/report/collectors hiện hành; installation rỗng
+có thể chưa đủ bằng chứng để pass. Cờ `--send-alert` gửi thông báo thử thật tới
+Telegram nếu cấu hình; chỉ thêm khi muốn kiểm tra delivery. `verify_stack.py`
+nhận `--dag-run` của run thực tế trên installation, không dùng run ID lịch sử cố định.
+Cờ `--inference` và các verifier SaaS/company tạo event demo; chuẩn bị fixtures theo
+[README.md](README.md) trước khi chạy.
 
-Airflow: snapshot → validate → identity evaluation/register → RAI audit → gate → reload. Calibration/CV/holdout FAR và FRR phải ≤20% ở demo; snapshot candidate phải khớp run. `REQUIRE_HUMAN_FAIRNESS=true` chặn cả insufficient evidence.
+`pipeline/verify_recovery.py --rollback` là kiểm chứng legacy bundle, không phải
+runbook rollback policy Face/Voice hiện hành. Dùng endpoint platform
+`POST /v1/admin/lifecycle/{face|voice}/rollback`, rồi kiểm tra lifecycle state,
+Registry, readiness và serving; template có endpoint riêng. Xem
+[backup/restore/rollback](DEPLOYMENT.md#backup-restore-và-rollback). Không phục hồi
+backup đè lên installation đang phục vụ hoặc xóa volumes để xử lý lỗi.
+
+Airflow model DAG có bảy task: snapshot → validate → publish dataset →
+calibrate/register → RAI audit → offline gate → lifecycle tick. Không có lịch train
+vô điều kiện; monitoring hàng giờ phát intent theo từng modality, service khóa claim
+để tránh train trùng. Offline pass chỉ vào challenger/shadow. Canary tăng traffic
+5/10/25/50/100%, kiểm tra tối thiểu 1.000 mẫu và 3.600 giây/stage, 30 nhãn/class,
+FMR <=1%, FNMR <=5%, không tăng FMR và FNMR tăng tối đa 0,5 điểm phần trăm.
+Tham số đầy đủ nằm trong `pipeline/lifecycle_config.json`; thiếu nhãn chờ thêm bằng
+chứng. Chỉ stage cuối pass mới chuyển champion, fail giữ champion và lưu audit.
+RAI report được sinh trong DAG, nhưng candidate endpoint của lifecycle modality
+hiện chưa dùng `REQUIRE_HUMAN_FAIRNESS` để chặn promotion. Cờ này thuộc gate bundle
+legacy; cần reviewer kiểm tra RAI thủ công, không coi nó là fairness gate tự động
+đã được thực thi trong luồng mới.
+
+Kiểm tra lifecycle bằng `GET /v1/admin/lifecycle/state` với `X-API-Key` platform.
+Không ghi key vào log/report. Drift engine dùng PSI chất lượng/score, embedding
+MMD², reviewed performance và template cohorts, cần ba cửa sổ mới đủ điều kiện.
+Query embedding retention tắt mặc định: thiếu vector/nhãn không có nghĩa model khỏe.
+Vòng Evidently 60 giây chỉ là báo cáo; không có trigger train độc lập thứ hai.
 
 ## CI/CD GitHub trên repo FSB, 02/10/2026
 
-Repo `FSB-MSA36HN/DDM501-face-voice-proctoring` triển khai demo bằng runner Ubuntu 24.04 trong WSL với nhãn `self-hosted`, `Linux`, `ddm501-linux-demo`. Runner chạy dưới systemd với tài khoản `ddm501runner`; thư mục work của runner nằm trên ext4 để `actions/checkout` giải nén được. Job sao chép đúng checkout sang `%LOCALAPPDATA%/DDM501/runner-checkouts/<run-id>-<attempt>` trên ổ C rồi gọi `powershell.exe` để dùng Python runtime, Docker Desktop, `.env` và volumes Windows đã có. Hai đường dẫn runtime và checkout root nằm trong systemd drop-in `runtime.conf`. Job chỉ chạy trên `main` sau `quality` và `containers`; PR không được deploy. `pipeline/deploy_local.ps1` kiểm tra SHA đầy đủ, stage release ngoài OneDrive, build Compose, chờ health và kiểm tra Grafana. Bản cũ chạy trên Windows bị Code Integrity chặn `Runner.Worker.exe` (event 3033/3077), nên không dùng runner đó cho repo FSB.
+Repo `FSB-MSA36HN/DDM501-face-voice-proctoring` triển khai demo bằng runner Ubuntu 24.04 trong WSL với nhãn `self-hosted`, `Linux`, `ddm501-linux-demo`. Runner chạy dưới systemd với tài khoản `ddm501runner`; thư mục work của runner nằm trên ext4 để `actions/checkout` giải nén được. Job sao chép đúng checkout sang `%LOCALAPPDATA%/DDM501/runner-checkouts/<run-id>-<attempt>` trên ổ C rồi gọi `powershell.exe` để dùng Python runtime, Docker Desktop, `.env` và volumes Windows đã có. Hai đường dẫn runtime và checkout root nằm trong systemd drop-in `runtime.conf`. Job chỉ chạy trên `main` sau `quality`, Windows `deployment-preflight` và `containers`; PR không được deploy. Preflight bắt buộc JUnit có ít nhất hai test và không skip/failure/error. `pipeline/deploy_local.ps1` kiểm tra SHA đầy đủ, stage release ngoài OneDrive, build Compose, chờ health và kiểm tra Grafana. Bản cũ chạy trên Windows bị Code Integrity chặn `Runner.Worker.exe` (event 3033/3077), nên không dùng runner đó cho repo FSB.
+
+Push chỉ thay Markdown/`docs/**` bị loại bởi path filter. Khi cần CI cho bản tài
+liệu, dùng PR hoặc manual workflow dispatch; bật `deploy=true` trên `main` mới yêu
+cầu deploy thủ công. Không suy diễn việc sửa tài liệu hoặc rewrite Git metadata
+thành một lần deployment đã thành công.
 
 Sau khi khởi động lại Windows, shortcut trong Startup của người dùng mở Docker Desktop và giữ một phiên `Ubuntu-24.04` chạy nền để systemd đưa runner online. Kiểm tra bằng:
 
