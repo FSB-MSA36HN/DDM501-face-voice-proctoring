@@ -85,7 +85,7 @@ def build():
           'Sizing: workers ≥ ceil(λ × CPU service time / 0,65).\nChi phí: compute + DB + suspicious evidence + egress.\nCần người thật: consented labels, camera/mic acceptance, team contribution.\nPAD/AASIST có inference; cần benchmark và cloud/TLS/SSO.',
           '1 phút. Sizing là mô hình để load test, không phải capacity đã chứng minh. Không dựng tên hay commit thành viên. Không có deployment cloud có phí trong phạm vi này.')
     slide('Q&A / demo links',
-          'Grafana: localhost:13000/d/biometric-overview\nPortal: :18501 · Legacy: :18600 · API docs: :18100/docs\nAirflow: :18081 · MLflow: :15030\nGitHub: TrinhDucDuong/ddm501-face-voice-proctoring',
+          'Grafana: localhost:13000/d/biometric-overview\nPortal: :18501 · Legacy: :18600 · API docs: :18100/docs\nAirflow: :18081 · MLflow: :15030\nGitHub: FSB-MSA36HN/DDM501-face-voice-proctoring',
           'Q&A: Vì sao threshold calibration thay fine-tune? Vì base encoders pretrained và dữ liệu demo nhỏ. Vì sao identity split? Tránh cùng identity xuất hiện ở tune và test. Mất callback? Transactional outbox + retries + idempotency. Fairness? Insufficient human labels, không giả định đạt. Replay protocol khác spoof biometric. Chỉ partner backend có thể enforce quyền vào thi.')
     destination = ROOT / 'docs/DDM501_Face_Voice_Proctoring.pptx'
     destination.parent.mkdir(exist_ok=True)

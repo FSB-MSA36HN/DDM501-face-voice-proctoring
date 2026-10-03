@@ -2,6 +2,8 @@
 
 Dịch vụ xác minh face/voice theo batch cho doanh nghiệp tổ chức kỳ đánh giá ngoại ngữ thường niên. Công ty giữ hệ thống thi, lịch capture, điểm và quyết định nghiệp vụ. Dự án cung cấp API/webhook, portal công ty và full pipeline MLOps.
 
+Repository chính thức: [FSB-MSA36HN/DDM501-face-voice-proctoring](https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring), nhánh `main`. Theo dõi [GitHub Actions của FSB](https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring/actions) để xem trạng thái CI/CD theo đúng commit.
+
 ## Hai không gian vận hành
 
 - Công ty: đăng ký gói giả lập, quản lý nhân viên, ghi danh qua camera/audio/upload hoặc API, integration keys, webhook, lịch sử, bằng chứng nghi vấn và PDF/CSV.
@@ -22,7 +24,7 @@ SFace/YuNet + ECAPA xác minh danh tính. MiniFASNet face PAD và AASIST audio a
 
 PostgreSQL lưu embedding/metadata/checks/review; MinIO lưu suspicious evidence, MLflow artifacts và các snapshot feature/nhãn có phiên bản cho MLOps. Raw enrollment và media check hợp lệ không được giữ mặc định. Lịch sử, exports và evidence downloads đều tenant-scoped. Webhook HMAC có durable outbox/retry; receiver phải deduplicate.
 
-Airflow có hai DAG phục vụ lifecycle chính: monitoring mỗi giờ và hiệu chỉnh ngưỡng theo yêu cầu riêng Face/Voice; DAG `biometric_simulation` riêng nhận job demo. Source hiện có decision engine nhiều tầng, template có phiên bản và luồng `candidate → offline → challenger → shadow → canary → champion/rollback`; drift thống kê đơn lẻ không kích hoạt train. Xem [lifecycle và giới hạn thực tế](docs/MODALITY_LIFECYCLE.md), [Continuous MLOps](docs/CONTINUOUS_MLOPS.md) và [bằng chứng theo từng phiên bản](VERIFICATION.md). Lifecycle commit `76169cf` đã có GitHub CI/deploy thành công; phần simulation mới được kiểm chứng local, không phải bằng chứng rollout bằng dữ liệu production.
+Airflow có hai DAG phục vụ lifecycle chính: monitoring mỗi giờ và hiệu chỉnh ngưỡng theo yêu cầu riêng Face/Voice; DAG `biometric_simulation` riêng nhận job demo. Source hiện có decision engine nhiều tầng, template có phiên bản và luồng `candidate → offline → challenger → shadow → canary → champion/rollback`; drift thống kê đơn lẻ không kích hoạt train. Xem [lifecycle và giới hạn thực tế](docs/MODALITY_LIFECYCLE.md), [Continuous MLOps](docs/CONTINUOUS_MLOPS.md) và [simulation](docs/SIMULATION.md). Simulation dùng dữ liệu tổng hợp, không phải bằng chứng rollout bằng dữ liệu production. Đối chiếu kết quả CI/deploy trên Actions của FSB theo đúng SHA, không dùng run của repository trước khi chuyển làm kết quả cho bản hiện tại.
 
 ## Cài đặt trên máy mới
 
@@ -44,6 +46,18 @@ Invoke-RestMethod http://localhost:18100/health
 ```
 
 Chọn thư mục checkout ngoài OneDrive để tránh lỗi bind mount trên Docker Desktop. `model-init` tải weights pinned; API chỉ khởi động sau khi bước này thành công. Nếu tải chậm/lỗi, xem `docker compose logs --tail 100 model-init api airflow-init`; không xóa volumes để thử lại.
+
+### Repository và remote Git
+
+Bản clone mới ở trên có `origin` trỏ tới FSB. Với checkout đã có remote `fsb`, dùng rõ tên remote để tránh fetch/push nhầm:
+
+```powershell
+git remote -v
+git fetch fsb
+git push fsb HEAD:main
+```
+
+Chỉ push sau khi kiểm tra thay đổi, commit và hoàn tất review theo [CONTRIBUTING.md](CONTRIBUTING.md). Nếu clone mới chỉ có `origin` trỏ FSB, thay `fsb` bằng `origin` trong các lệnh trên. Script `pipeline/github_ci.py` ưu tiên `fsb`, chỉ dùng `origin` khi không có `fsb`, và kiểm tra URL thuộc repository FSB trước khi đọc credentials hoặc gọi GitHub API. Không cần đổi remote cá nhân để dùng remote FSB.
 
 Chỉnh `.env` trước khi dùng ngoài demo loopback: đổi credentials và `API_KEY`, đặt `SESSION_SIGNING_KEY`, `WEBHOOK_MASTER_KEY`, `SIMULATION_SERVICE_KEY`, đồng bộ password trong các URL DB/S3. Telegram là tùy chọn. Không commit `.env`. Với môi trường đã có dữ liệu, **giữ nguyên `.env`, Compose project name và volumes**; xem [vận hành](OPERATIONS.md) và [triển khai](DEPLOYMENT.md), không chạy lại setup như một installation mới.
 
@@ -107,10 +121,12 @@ Bootstrap tải các dataset công khai pinned (cần quyền truy cập/license
 
 Repository dùng nhiều Dockerfile theo service: `api/Dockerfile`, `ui/Dockerfile`, `airflow/Dockerfile`, `monitoring/Dockerfile`, `legacy_demo/Dockerfile`; `deploy/Dockerfile.serving` đóng gói thêm weights cho image portable. `docker-compose.yml` chỉ rõ build context/Dockerfile, healthchecks, dependencies, networks và volumes. Không có Dockerfile tổng ở root; dùng `docker compose build` hoặc `docker build -f api/Dockerfile .`.
 
-CI tách `quality` (Ubuntu, unit tests/coverage) và `deployment-preflight` (Windows, hai test staging/reject SHA với runtime tạm, không cần secrets hoặc Docker daemon). Job Windows phải có JUnit không skip; `containers` chờ cả hai job trước khi `deploy-demo` được phép chạy. Preflight không thay thế kiểm chứng deploy thật qua WSL runner và Docker Desktop; xem [bằng chứng CI/deploy ngày 02/10](VERIFICATION.md#deploy-github-actions-02102026-đối-chiếu-ngày-03102026).
+CI tách `quality` (Ubuntu, unit tests/coverage) và `deployment-preflight` (Windows, hai test staging/reject SHA với runtime tạm, không cần secrets hoặc Docker daemon). Job Windows phải có JUnit không skip; `containers` chờ cả hai job trước khi `deploy-demo` được phép chạy. Preflight không thay thế kiểm chứng deploy thật qua WSL runner và Docker Desktop. Xem [workflow](.github/workflows/ci.yml), [hướng dẫn triển khai](DEPLOYMENT.md) và run tương ứng trên [Actions FSB](https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring/actions).
 
-[Report](PROJECT_REPORT.md) · [Sơ đồ kiến trúc Mermaid](docs/ARCHITECTURE_OVERVIEW.md) · [Continuous MLOps](docs/CONTINUOUS_MLOPS.md) · [Demo và bàn giao](docs/DEMO_HANDOVER_GUIDE.md) · [Scope](PROJECT_REQUIREMENTS.md) · [Kiến trúc kỹ thuật](ARCHITECTURE.md) · [Tích hợp](SAAS_INTEGRATION.md) · [Mapping](RUBRIC_MAPPING.md) · [Bằng chứng](VERIFICATION.md) · [Vận hành](OPERATIONS.md).
+[Report](PROJECT_REPORT.md) · [Sơ đồ kiến trúc Mermaid](docs/ARCHITECTURE_OVERVIEW.md) · [Continuous MLOps](docs/CONTINUOUS_MLOPS.md) · [Demo và bàn giao](docs/DEMO_HANDOVER_GUIDE.md) · [Scope](PROJECT_REQUIREMENTS.md) · [Kiến trúc kỹ thuật](ARCHITECTURE.md) · [Tích hợp](SAAS_INTEGRATION.md) · [Mapping](RUBRIC_MAPPING.md) · [Vận hành](OPERATIONS.md).
 
-[Phân công và quy trình đóng góp](CONTRIBUTING.md) ghi trách nhiệm bốn thành viên, quy ước branch/PR và bằng chứng bàn giao. Tài liệu hiện hành: README, ARCHITECTURE, DEPLOYMENT và modality lifecycle; các mục ghi ngày/commit trong VERIFICATION và PROJECT_STATE là bằng chứng lịch sử, không phải kết quả chạy lại trên commit hiện tại.
+Bộ tài liệu bảo vệ: [slide PowerPoint](docs/presentation/DDM501_Defense_15p_Demo13p_QA10p.pptx), [lời thoại](docs/presentation/SPEAKER_SCRIPT.md), [demo 10–15 phút](docs/presentation/DEMO_RUNBOOK.md) và [Q&A](docs/presentation/QA_GUIDE.md). Xem [mục lục trình bày](DEMO_PRESENTATION.md) để chọn bản PDF hoặc kịch bản tập nhóm.
+
+[Phân công và quy trình đóng góp](CONTRIBUTING.md) ghi trách nhiệm bốn thành viên, quy ước branch/PR và bằng chứng bàn giao. Tài liệu hiện hành: README, ARCHITECTURE, DEPLOYMENT và modality lifecycle. `PROJECT_STATE.md` lưu trạng thái lịch sử theo ngày/commit, không phải kết quả chạy lại trên commit hiện tại. `VERIFICATION.md` và hai bản export slide/report cũ đã được gỡ khỏi repository; dùng bộ tài liệu hiện hành và artifacts của đúng run Actions để đối chiếu.
 
 GitHub https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring. Demo Grafana/Airflow admin/admin, loopback only. Không commit credentials, biometric media hoặc backups.

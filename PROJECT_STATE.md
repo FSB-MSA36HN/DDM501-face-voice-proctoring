@@ -1,5 +1,11 @@
 # Trạng thái tiếp tục — DDM501, 29/09/2026
 
+> Ghi chép lịch sử ngày 28–29/09/2026. Repository hiện hành là
+> [FSB-MSA36HN/DDM501-face-voice-proctoring](https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring),
+> nhánh `main`. Các run ID/SHA bên dưới thuộc giai đoạn repository cá nhân trước khi
+> chuyển sang FSB, không phải kết quả CI của FSB. Xem [Actions FSB](https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring/actions)
+> và [README](README.md) cho cấu hình hiện tại. `VERIFICATION.md` đã được gỡ khỏi cây hiện hành.
+
 ## Maintenance theo scope công ty đã chốt
 
 Airflow điều phối MLOps (dữ liệu → đánh giá → cập nhật model). Công ty giữ hệ thống thi, nhịp capture, điểm và quyết định nghiệp vụ. Dịch vụ nhận batch ảnh/WAV qua `/v1/checks`, trả kết quả tức thời và signed webhook; portal công ty quản lý nhân viên, ghi danh, API/webhook, lịch sử và PDF/CSV. Grafana/Evidently/Telegram dành cho vận hành nền tảng, không gửi Telegram riêng cho công ty.
@@ -10,7 +16,7 @@ Live ngày 29/09: hai công ty có cùng mã EMP-001; same identity verified, ot
 
 Quality maintenance: **65 tests pass, coverage 86,50%**; Grafana **62 panels, 67 queries**. Portal được kiểm tra bằng Streamlit AppTest với API thật: trang đăng ký, sáu trang cho mỗi công ty và inline CSV export. Camera/mic và trình duyệt download/playback vẫn cần acceptance trên thiết bị thật. Xem [VERIFICATION.md](VERIFICATION.md) và [PROJECT_REPORT.md](PROJECT_REPORT.md) cho kết quả cuối; các mục bên dưới giữ bằng chứng baseline 28/09.
 
-GitHub maintenance [run 36562882154](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/runs/36562882154) **success** cho executable commit `8b720fc1a30ba16754c785020325e40de27c02e4`: quality, containers và deploy-demo đều pass. Remote có **65 tests, coverage 86,45%**. Runtime đã đối chiếu đúng release SHA; kiểm tra công ty/callbacks/isolation/evidence/export và monitoring sau deployment pass. Các commit tài liệu bàn giao sau SHA này không thay executable code.
+Ghi nhận lịch sử trước khi chuyển repository: maintenance run `36562882154` **success** cho executable commit `8b720fc1a30ba16754c785020325e40de27c02e4`: quality, containers và deploy-demo đều pass. Remote lúc đó có **65 tests, coverage 86,45%**. Runtime đã đối chiếu đúng release SHA; kiểm tra công ty/callbacks/isolation/evidence/export và monitoring sau deployment pass. Đây không phải run trên FSB; không ghép run ID này vào URL Actions của FSB.
 
 ## Phạm vi và quyền đã có
 
@@ -30,9 +36,9 @@ Hoàn thiện dự án theo rubric/full pipeline, monitoring tập trung Grafana
 
 ## GitHub và runtime
 
-Repo: https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring, branch `main`.
+Repo hiện hành: https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring, branch `main`.
 
-Run [36430718832](https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions/runs/36430718832) **success**, commit `3e98c770c913b84f30e68e541d044551f966503c`, ngày 28/09/2026. Cả ba jobs **quality, containers, deploy-demo** thành công, gồm kiểm chứng dashboard/protected reports/freshness và upload artifacts. Remote: **52 passed, coverage 88,69%**; local: **52 passed, coverage 88,76%**. Deploy thực tế trên Docker Desktop qua runner Windows, source release ngoài OneDrive, dữ liệu/secrets giữ nguyên; chưa phải public cloud deployment.
+Ghi nhận lịch sử trước khi chuyển repository: run `36430718832` **success**, commit `3e98c770c913b84f30e68e541d044551f966503c`, ngày 28/09/2026. Cả ba jobs **quality, containers, deploy-demo** thành công, gồm kiểm chứng dashboard/protected reports/freshness và upload artifacts. Remote lúc đó: **52 passed, coverage 88,69%**; local: **52 passed, coverage 88,76%**. Deploy thực tế trên Docker Desktop qua runner Windows, source release ngoài OneDrive, dữ liệu/secrets giữ nguyên; chưa phải public cloud deployment. Run này không thuộc Actions của FSB.
 
 Runner Windows `ddm501-local-windows`, labels `self-hosted`, `Windows`, `ddm501-demo`, tại `data/github-runner` (gitignored). Chạy hidden theo phiên người dùng, chưa cài Windows service. Sau reboot khởi động lại theo [OPERATIONS.md](OPERATIONS.md). Quality/build chạy GitHub-hosted Ubuntu; deploy chỉ trusted main, environment `demo` giới hạn main, concurrency một deploy.
 
@@ -68,7 +74,7 @@ Không overwrite `.env` bằng `.env.example`, không `down -v`, reset/clean hay
 - Drift metrics: http://localhost:18001/metrics
 - Webhook metrics: http://localhost:18002/metrics
 - Ops metrics: http://localhost:18003/metrics/
-- GitHub Actions: https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions
+- GitHub Actions hiện hành: https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring/actions
 - Telegram: https://t.me/ddm501_face_voice_proctoring_bot
 
 Grafana/Airflow demo `admin/admin`, loopback only. Monitoring là quyền platform admin; tenant selector chỉ lọc SQL, không biến dashboard thành quyền truy cập tenant.

@@ -327,7 +327,7 @@ try:
         st.caption('Grafana/Evidently/Telegram phục vụ đội vận hành nền tảng. Công ty nhận kết quả nghiệp vụ qua API/webhook.')
         for label, url in {'Airflow': 'http://localhost:18081', 'MLflow': 'http://localhost:15030', 'MinIO': 'http://localhost:19101',
                             'API docs': 'http://localhost:18100/docs', 'Customer demo': 'http://localhost:18600',
-                            'CI/CD': 'https://github.com/TrinhDucDuong/ddm501-face-voice-proctoring/actions'}.items():
+                            'CI/CD': 'https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring/actions'}.items():
             st.link_button(label, url)
         if st.button('Reload champion model'):
             result = api('POST', '/v1/admin/reload-model')

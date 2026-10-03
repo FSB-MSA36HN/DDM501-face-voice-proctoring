@@ -74,8 +74,8 @@ trong lần biên soạn tài liệu này.
 | MLflow production | `http://localhost:15030` | Face/Voice registry độc lập, chỉ đọc |
 | GitHub Actions FSB | `https://github.com/FSB-MSA36HN/DDM501-face-voice-proctoring/actions` | Run cụ thể, job và artifacts |
 
-Mở GitHub FSB trực tiếp: link CI/CD trong trang **Vận hành MLOps** hiện còn dẫn tới
-repo cá nhân. Trong buổi demo cũng không dùng nút **Reload champion model** để thay
+Mở GitHub FSB trực tiếp hoặc link **CI/CD** trong trang **Vận hành MLOps**.
+Trong buổi demo không dùng nút **Reload champion model** để thay
 cho lifecycle rollback, vì đó là thao tác bundle legacy.
 
 ## 3. Timeline chuẩn 13 phút
