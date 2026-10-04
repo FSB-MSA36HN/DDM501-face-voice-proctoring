@@ -14,6 +14,8 @@ Repository chính thức: [FSB-MSA36HN/DDM501-face-voice-proctoring](https://git
 Portal http://localhost:18501; customer example http://localhost:18600; API http://localhost:18100/docs.
 Grafana http://localhost:13000/d/biometric-overview; Airflow http://localhost:18081; MLflow http://localhost:15030; MinIO http://localhost:19101.
 
+Trong **Vận hành MLOps**, **MLflow production** (`:15030`) hiển thị policy phục vụ Face/Voice; **MLflow simulation** (`:15031`) hiển thị các model của demo drift/promotion/rollback. Hai registry cách ly, nên model simulation không xuất hiện trong production. Grafana **System Overview** hiện có 10 panel chính và link tới báo cáo chi tiết; nếu vẫn thấy dashboard cũ, kiểm tra job `deploy-demo` đã thành công trên đúng commit rồi tải lại trang. Grafana và Airflow có trang đăng nhập riêng.
+
 Đăng ký công ty tại portal, lưu operator key được trả một lần. Ghi danh >=2 ảnh/WAV, cấp integration key và cấu hình webhook. Backend gọi POST /v1/checks với person_id, session_id, request_id, consent, face_file và voice_file. Nhịp 30 giây và WAV 10 giây là ví dụ do khách hàng cấu hình.
 
 ## Model và dữ liệu
