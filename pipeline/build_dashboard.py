@@ -94,7 +94,7 @@ def build():
     layout = [(0, 0, 6, 7), (6, 0, 8, 7), (0, 7, 8, 7), (8, 7, 8, 7),
               (16, 7, 8, 7), (0, 14, 12, 7), (12, 14, 12, 7),
               (0, 21, 12, 7), (12, 21, 12, 7), (14, 0, 10, 7)]
-    for item, (x, y, w, h) in zip(panels, layout):
+    for item, (x, y, w, h) in zip(panels, layout, strict=True):
         item['gridPos'] = {'x': x, 'y': y, 'w': w, 'h': h}
 
     return {
